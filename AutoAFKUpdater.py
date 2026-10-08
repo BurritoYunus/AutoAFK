@@ -13,8 +13,8 @@ import time
 import re
 from pathlib import Path
 
-# GitHub Repository - updates come from the BurritoYunus/autoafk fork
-GITHUB_REPO = "BurritoYunus/autoafk"
+# GitHub Repository - updates come from the BurritoYunus/AutoAFK fork
+GITHUB_REPO = "BurritoYunus/AutoAFK"
 GITHUB_BRANCH = "master"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 GITHUB_BRANCH_ZIP_URL = f"https://api.github.com/repos/{GITHUB_REPO}/zipball/{GITHUB_BRANCH}"

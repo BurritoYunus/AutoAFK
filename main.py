@@ -15,7 +15,7 @@ from pathlib import Path
 VERSION = "2.0.7"
 
 # GitHub Repository (updates are fetched from here)
-GITHUB_REPO = "BurritoYunus/autoafk"
+GITHUB_REPO = "BurritoYunus/AutoAFK"
 GITHUB_BRANCH = "master"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 

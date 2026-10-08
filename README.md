@@ -2,7 +2,7 @@
 
 Automated bot for AFK Arena game. Handles daily activities, arena battles, guild hunts, and more.
 
-Fork of [Hammanek/AutoAFK](https://github.com/Hammanek/AutoAFK). Updates are published from [BurritoYunus/autoafk](https://github.com/BurritoYunus/autoafk).
+Fork of [Hammanek/AutoAFK](https://github.com/Hammanek/AutoAFK). Updates are published from [BurritoYunus/AutoAFK](https://github.com/BurritoYunus/AutoAFK).
 
 ## Features
 
@@ -22,7 +22,7 @@ Fork of [Hammanek/AutoAFK](https://github.com/Hammanek/AutoAFK). Updates are pub
 
 ### 1. Download
 
-Download the latest `AutoAFK.zip` from [Releases](https://github.com/BurritoYunus/autoafk/releases/latest)
+Download the latest `AutoAFK.zip` from [Releases](https://github.com/BurritoYunus/AutoAFK/releases/latest)
 
 ### 2. Extract
 
@@ -206,7 +206,7 @@ autoupdate = True
 
 The bot will automatically update and restart when a new version is available.
 
-Updates come from [BurritoYunus/autoafk](https://github.com/BurritoYunus/autoafk):
+Updates come from [BurritoYunus/AutoAFK](https://github.com/BurritoYunus/AutoAFK):
 - **Compiled version (`AutoAFK.exe`)** updates from the latest GitHub release's `AutoAFK.zip`.
 - **Source version (`start.bat` / `python main.py`)** updates from the latest release, or from the `master` branch when there are no releases. A git clone is updated with `git pull --ff-only`. `settings.ini` is always kept.
 
@@ -251,7 +251,7 @@ ADB is included in the release package. If you have issues:
 
 ### Update failed
 
-1. Download manually from [Releases](https://github.com/BurritoYunus/autoafk/releases/latest)
+1. Download manually from [Releases](https://github.com/BurritoYunus/AutoAFK/releases/latest)
 2. Extract and replace all files except `settings.ini`
 3. Run `AutoAFK.exe`
 
@@ -314,7 +314,7 @@ AutoAFK.exe --autotower
 
 ## Support
 
-- Report issues: [GitHub Issues](https://github.com/BurritoYunus/autoafk/issues)
+- Report issues: [GitHub Issues](https://github.com/BurritoYunus/AutoAFK/issues)
 
 ## Disclaimer
 
