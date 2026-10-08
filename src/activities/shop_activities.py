@@ -195,8 +195,7 @@ class ShopActivities(BaseActivity):
     # Spot that closes reward popups without hitting anything on the pages
     DISMISS = (540, 140)
     # Pass tabs (Champions of Esperia, Twisted Bounties, Regal Rewards)
-    PASS_COMMON_X = 220
-    PASS_MARKER_X = 437
+    PASS_MARKER_X = 437  # milestone diamond between Common and Premium; tapping it claims the row
     PASS_ROW_YS = (903, 1090, 1278, 1440)
     PASS_MARKER_YS = (903, 1090, 1278, 1460)  # milestone diamond, bright once reached
 
@@ -259,7 +258,7 @@ class ShopActivities(BaseActivity):
         return emporium == 'Monthly Emporium' and tab_x > 360
 
     def _collect_pass_rewards(self, badge_x: int):
-        """Claim reached, unclaimed rewards in the free (Common) column of a pass"""
+        """Claim reached, unclaimed free (Common) rewards of a pass by tapping the milestone diamond"""
         logger.purple("    Collecting pass rewards (Common column)")
         tapped = set()
         for _ in range(3):
@@ -273,7 +272,7 @@ class ShopActivities(BaseActivity):
                 claimed = any(cy - 60 < row_y < cy + ch + 60 for _, cy, _, ch in checks)
                 if reached and not claimed and row_y not in tapped:
                     tapped.add(row_y)
-                    self.controller.tap(self.PASS_COMMON_X, row_y, seconds=2)
+                    self.controller.tap(self.PASS_MARKER_X, marker_y, seconds=2)
                     self.controller.tap(*self.DISMISS, seconds=1)
                     new_taps = True
             if not new_taps or not self._tab_still_badged(badge_x):
