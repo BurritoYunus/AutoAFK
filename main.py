@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 # Version - Update this when releasing new version
-VERSION = "2.0.7"
+VERSION = "2.0.8"
 
 # GitHub Repository (updates are fetched from here)
 GITHUB_REPO = "BurritoYunus/AutoAFK"
