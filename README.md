@@ -2,7 +2,7 @@
 
 Automated bot for AFK Arena game. Handles daily activities, arena battles, guild hunts, and more.
 
-[![Support on Ko-fi](https://img.shields.io/badge/Support%20on-Ko--fi-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/afksupporter)
+Fork of [Hammanek/AutoAFK](https://github.com/Hammanek/AutoAFK). Updates are published from [BurritoYunus/autoafk](https://github.com/BurritoYunus/autoafk).
 
 ## Features
 
@@ -22,7 +22,7 @@ Automated bot for AFK Arena game. Handles daily activities, arena battles, guild
 
 ### 1. Download
 
-Download the latest `AutoAFK.zip` from [Releases](https://github.com/Hammanek/AutoAFK/releases/latest)
+Download the latest `AutoAFK.zip` from [Releases](https://github.com/BurritoYunus/autoafk/releases/latest)
 
 ### 2. Extract
 
@@ -206,6 +206,15 @@ autoupdate = True
 
 The bot will automatically update and restart when a new version is available.
 
+Updates come from [BurritoYunus/autoafk](https://github.com/BurritoYunus/autoafk):
+- **Compiled version (`AutoAFK.exe`)** updates from the latest GitHub release's `AutoAFK.zip`.
+- **Source version (`start.bat` / `python main.py`)** updates from the latest release, or from the `master` branch when there are no releases. A git clone is updated with `git pull --ff-only`. `settings.ini` is always kept.
+
+### Publishing an update
+
+1. Bump `VERSION` in `main.py` and merge to `master` (source installs pick this up).
+2. Push a matching tag, e.g. `git tag v2.0.7 && git push origin v2.0.7`. The *Build Executable* workflow builds `AutoAFK.zip` and publishes the release that compiled installs download.
+
 ## Troubleshooting
 
 ### Bot doesn't start
@@ -242,7 +251,7 @@ ADB is included in the release package. If you have issues:
 
 ### Update failed
 
-1. Download manually from [Releases](https://github.com/Hammanek/AutoAFK/releases/latest)
+1. Download manually from [Releases](https://github.com/BurritoYunus/autoafk/releases/latest)
 2. Extract and replace all files except `settings.ini`
 3. Run `AutoAFK.exe`
 
@@ -305,12 +314,7 @@ AutoAFK.exe --autotower
 
 ## Support
 
-- Report issues: [GitHub Issues](https://github.com/Hammanek/AutoAFK/issues)
-- Support development: [Ko-fi](https://ko-fi.com/afksupporter) ☕
-
-If you find this bot helpful, consider supporting its development!
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/afksupporter)
+- Report issues: [GitHub Issues](https://github.com/BurritoYunus/autoafk/issues)
 
 ## Disclaimer
 

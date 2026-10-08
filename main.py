@@ -12,10 +12,11 @@ import subprocess
 from pathlib import Path
 
 # Version - Update this when releasing new version
-VERSION = "2.0.6"
+VERSION = "2.0.7"
 
-# GitHub Repository
-GITHUB_REPO = "Hammanek/AutoAFK"
+# GitHub Repository (updates are fetched from here)
+GITHUB_REPO = "BurritoYunus/autoafk"
+GITHUB_BRANCH = "master"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 try:
@@ -221,7 +222,7 @@ class App(ctk.CTk):
             if os.path.exists(updater_exe):
                 cmd = [updater_exe, '--auto']
             elif os.path.exists(updater_py):
-                cmd = ['python', updater_py, '--auto']
+                cmd = [sys.executable, updater_py, '--auto']
             else:
                 self.textbox.insert('end', '❌ Updater not found\n', 'error')
                 return
@@ -406,17 +407,7 @@ class App(ctk.CTk):
         github_tag = f'github_link_{id(github_url)}'
         self.textbox.tag_add(github_tag, start_idx, end_idx)
         self.link_urls[github_tag] = github_url
-        
-        self.textbox.insert('end', '☕ Support: ', 'info')
-        
-        # Ko-fi link (clickable)
-        kofi_url = 'https://ko-fi.com/afksupporter'
-        start_idx = self.textbox.index('end-1c')
-        self.textbox.insert('end', f'{kofi_url}\n\n', 'link')
-        end_idx = self.textbox.index('end-1c')
-        kofi_tag = f'kofi_link_{id(kofi_url)}'
-        self.textbox.tag_add(kofi_tag, start_idx, end_idx)
-        self.link_urls[kofi_tag] = kofi_url
+        self.textbox.insert('end', '\n')
         
         # Check for updates
         self._check_for_updates()
@@ -1257,8 +1248,7 @@ def main() -> None:
 def run_dailies_headless() -> None:
     """Run dailies without GUI"""
     print(f"AutoAFK {VERSION} - Headless Mode")
-    print("https://github.com/Hammanek/AutoAFK")
-    print("☕ Support: https://ko-fi.com/afksupporter")
+    print(f"https://github.com/{GITHUB_REPO}")
     print()
     
     try:
@@ -1310,8 +1300,7 @@ def run_dailies_headless() -> None:
 def run_tower_push_headless() -> None:
     """Run tower push without GUI"""
     print(f"AutoAFK {VERSION} - Tower Push Mode")
-    print("https://github.com/Hammanek/AutoAFK")
-    print("☕ Support: https://ko-fi.com/afksupporter")
+    print(f"https://github.com/{GITHUB_REPO}")
     print()
     
     try:

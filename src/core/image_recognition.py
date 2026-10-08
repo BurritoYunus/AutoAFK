@@ -8,7 +8,7 @@ import logging
 import time
 from typing import Optional, Tuple
 from PIL import Image
-from pyscreeze import locate
+from pyscreeze import locate, locateAll
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,41 @@ class ImageRecognition:
             logger.debug(f"Image search error for {image_name}: {e}")
             return None
             
-    def is_visible(self, image_name: str, confidence: float = 0.9, 
+    def find_all_images(self, image_name: str, confidence: float = 0.9,
+                        region: Tuple[int, int, int, int] = (0, 0, 1080, 1920),
+                        grayscale: bool = False, screenshot=None,
+                        min_distance: int = 10) -> list:
+        """Find every match of an image on screen.
+
+        Returns a list of (x, y, w, h) boxes sorted top-to-bottom, left-to-right,
+        with overlapping matches of the same spot merged. Pass ``screenshot`` to
+        reuse one capture for several searches.
+        """
+        if screenshot is None:
+            screenshot = self.device.get_screenshot()
+
+        image_path = os.path.join(self.img_dir, f"{image_name}.png")
+        if not os.path.exists(image_path):
+            logger.debug(f"Image not found: {image_path}")
+            return []
+
+        try:
+            search_img = Image.open(image_path)
+            matches = []
+            for box in locateAll(search_img, screenshot, grayscale=grayscale,
+                                 confidence=confidence, region=region):
+                x, y, w, h = int(box[0]), int(box[1]), int(box[2]), int(box[3])
+                cx, cy = x + w / 2, y + h / 2
+                if all(abs(cx - (mx + mw / 2)) > min_distance or abs(cy - (my + mh / 2)) > min_distance
+                       for mx, my, mw, mh in matches):
+                    matches.append((x, y, w, h))
+            matches.sort(key=lambda b: (b[1], b[0]))
+            return matches
+        except Exception as e:
+            logger.debug(f"Image search error for {image_name}: {e}")
+            return []
+
+    def is_visible(self, image_name: str, confidence: float = 0.9,
                    seconds: float = 1, retry: int = 1,
                    region: Tuple[int, int, int, int] = (0, 0, 1080, 1920),
                    suppress: bool = False, click: bool = False,
