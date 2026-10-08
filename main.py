@@ -791,31 +791,33 @@ class App(ctk.CTk):
 
 
 class ActivityWindow(ctk.CTkToplevel):
-    """Activity configuration window - original style"""
-    
+    """Activity configuration window.
+
+    Laid out with grid instead of fixed pixel positions, so it works with Windows display scaling:
+    the window can be resized, the sections reflow into 3/2/1 columns, the body scrolls when it
+    doesn't fit, and the Save button stays visible at the bottom.
+    """
+
+    SECTION_WIDTH = 250  # px per column before the layout drops to fewer columns
+
     def __init__(self, parent):
         super().__init__(parent)
-        self.geometry("745x560")
-        self.resizable(False, False)  # Disable window resizing
         self.title('Dailies Configuration')
         self.attributes("-topmost", True)
-        
+        self.resizable(True, True)
+        self.minsize(300, 300)
+
         self.config = parent.config
         self.activity_widgets = {}
         self.arena_widgets = {}
         self.events_widgets = {}
         self.bounties_widgets = {}
-        
-        # Activities Frame
-        self.activityFrame = ctk.CTkFrame(master=self, width=235, height=500)
-        self.activityFrame.place(x=10, y=10)
-        ctk.CTkLabel(master=self.activityFrame, text="Activities:", font=("Arial", 15, 'bold')).place(x=10, y=5)
-        
+
         activities = [
             ("Collect AFK Rewards", "checkbox", "collectRewards", "DAILIES"),
             ("Collect Mail", "checkbox", "collectMail", "DAILIES"),
             ("Companion Points", "checkbox", "companionPoints", "DAILIES"),
-            ("Auto lend mercs?", "checkbox", "lendMercs", "DAILIES", 40),
+            ("Auto lend mercs?", "checkbox", "lendMercs", "DAILIES", True),
             ("Fast Rewards", "entry", "fastrewards", "DAILIES"),
             ("Attempt Campaign", "checkbox", "attemptCampaign", "DAILIES"),
             ("Fountain of Time", "checkbox", "fountainOfTime", "DAILIES"),
@@ -823,97 +825,26 @@ class ActivityWindow(ctk.CTkToplevel):
             ("Collect Inn Gifts", "checkbox", "collectInn", "DAILIES"),
             ("Guild Hunts", "checkbox", "guildHunt", "DAILIES"),
             ("Store Purchases", "checkbox", "storePurchases", "DAILIES"),
-            ("Shop Refreshes", "entry", "shoprefreshes", "DAILIES", 40),
+            ("Shop Refreshes", "entry", "shoprefreshes", "DAILIES", True),
             ("Twisted Realm", "checkbox", "twistedRealm", "DAILIES"),
             ("Run Lab", "checkbox", "runLab", "DAILIES"),
             ("Collect Quests", "checkbox", "collectQuests", "DAILIES"),
             ("Collect Merchants", "checkbox", "collectMerchants", "DAILIES"),
             ("Use Bag Consumables", "checkbox", "useBagConsumables", "DAILIES"),
         ]
-        
-        y_offset = 30
-        start_y = 40
-        y = start_y
-        for item in activities:
-            label_text, widget_type, config_key, section = item[:4]
-            x_offset = item[4] if len(item) > 4 else 10
-            
-            label = ctk.CTkLabel(master=self.activityFrame, text=label_text)
-            label.place(x=x_offset, y=y)
-            if widget_type == "checkbox":
-                cb = ctk.CTkCheckBox(master=self.activityFrame, text=None, onvalue=True, offvalue=False)
-                cb.place(x=200, y=y)
-                self.activity_widgets[config_key] = cb
-                if self.config.getboolean(section, config_key, fallback=False):
-                    cb.select()
-            elif widget_type == "entry":
-                entry = ctk.CTkEntry(master=self.activityFrame, height=20, width=25)
-                entry.insert('end', self.config.get(section, config_key, fallback='0'))
-                entry.place(x=200, y=y)
-                self.activity_widgets[config_key] = entry
-            y += y_offset
-                
-        # Arena Frame
-        self.ArenaFrame = ctk.CTkFrame(master=self, width=235, height=280)
-        self.ArenaFrame.place(x=255, y=10)
-        ctk.CTkLabel(master=self.ArenaFrame, text="Arena:", font=("Arial", 15, 'bold')).place(x=10, y=5)
-        
         arena_items = [
             ("Battle Arena of Heroes", "checkbox", "battleArena", "ARENA"),
-            ("Number of Battles", "entry", "arenaBattles", "ARENA", 40),
-            ("Which Opponent", "entry", "arenaOpponent", "ARENA", 40),
+            ("Number of Battles", "entry", "arenaBattles", "ARENA", True),
+            ("Which Opponent", "entry", "arenaOpponent", "ARENA", True),
             ("Collect Daily TS loot", "checkbox", "tsCollect", "ARENA"),
             ("Collect Gladiator Coins", "checkbox", "gladiatorCollect", "ARENA"),
         ]
-        
-        y = 40
-        for item in arena_items:
-            label_text, widget_type, config_key, section = item[:4]
-            x_offset = item[4] if len(item) > 4 else 10
-            
-            label = ctk.CTkLabel(master=self.ArenaFrame, text=label_text)
-            label.place(x=x_offset, y=y)
-            if widget_type == "checkbox":
-                cb = ctk.CTkCheckBox(master=self.ArenaFrame, text=None, onvalue=True, offvalue=False)
-                cb.place(x=200, y=y)
-                self.arena_widgets[config_key] = cb
-                if self.config.getboolean(section, config_key, fallback=False):
-                    cb.select()
-            elif widget_type == "entry":
-                entry = ctk.CTkEntry(master=self.ArenaFrame, height=20, width=25)
-                entry.insert('end', self.config.get(section, config_key, fallback='5'))
-                entry.place(x=198, y=y)
-                self.arena_widgets[config_key] = entry
-            y += y_offset
-                
-        # Events Frame
-        self.eventsFrame = ctk.CTkFrame(master=self, width=235, height=210)
-        self.eventsFrame.place(x=255, y=300)
-        ctk.CTkLabel(master=self.eventsFrame, text="Events:", font=("Arial", 15, 'bold')).place(x=10, y=5)
-        
         events_items = [
             ("Fight of Fates", "checkbox", "fightOfFates", "EVENTS"),
             ("Battle of Blood", "checkbox", "battleOfBlood", "EVENTS"),
             ("Circus Tour", "checkbox", "circusTour", "EVENTS"),
             ("Heroes of Esperia", "checkbox", "heroesOfEsperia", "EVENTS"),
         ]
-        
-        y = 40
-        for label_text, widget_type, config_key, section in events_items:
-            label = ctk.CTkLabel(master=self.eventsFrame, text=label_text)
-            label.place(x=10, y=y)
-            cb = ctk.CTkCheckBox(master=self.eventsFrame, text=None, onvalue=True, offvalue=False)
-            cb.place(x=200, y=y)
-            self.events_widgets[config_key] = cb
-            if self.config.getboolean(section, config_key, fallback=False):
-                cb.select()
-            y += y_offset
-        
-        # Bounties Frame
-        self.BountiesFrame = ctk.CTkFrame(master=self, width=235, height=310)
-        self.BountiesFrame.place(x=500, y=10)
-        ctk.CTkLabel(master=self.BountiesFrame, text="Bounties:", font=("Arial", 15, 'bold')).place(x=10, y=5)
-        
         bounties_items = [
             ("Enable solo bounties", "checkbox", "dispatchSoloBounties", "BOUNTIES"),
             ("Enable team bounties", "checkbox", "dispatchTeamBounties", "BOUNTIES"),
@@ -925,62 +856,102 @@ class ActivityWindow(ctk.CTkToplevel):
             ("# Remaining to Dispatch All", "entry", "remaining", "BOUNTIES"),
             ("Enable event bounties", "checkbox", "dispatchEventBounties", "BOUNTIES"),
         ]
-        
-        y = 40
-        for label_text, widget_type, config_key, section in bounties_items:
-            label = ctk.CTkLabel(master=self.BountiesFrame, text=label_text)
-            label.place(x=10, y=y)
-            if widget_type == "checkbox":
-                cb = ctk.CTkCheckBox(master=self.BountiesFrame, text=None, onvalue=True, offvalue=False)
-                cb.place(x=200, y=y)
-                self.bounties_widgets[config_key] = cb
-                if self.config.getboolean(section, config_key, fallback=False):
-                    cb.select()
-            elif widget_type == "entry":
-                entry = ctk.CTkEntry(master=self.BountiesFrame, height=20, width=25)
-                entry.insert('end', self.config.get(section, config_key, fallback='0'))
-                entry.place(x=200, y=y)
-                self.bounties_widgets[config_key] = entry
-            y += y_offset
-        
-        # Misc Frame
-        self.MiscFrame = ctk.CTkFrame(master=self, width=235, height=180)
-        self.MiscFrame.place(x=500, y=330)
-        ctk.CTkLabel(master=self.MiscFrame, text="Misc:", font=("Arial", 15, 'bold')).place(x=10, y=5)
-        
         misc_items = [
             ("Delay start by x minutes", "entry", "delayedstart", "DAILIES"),
             ("Hibernate system when done", "checkbox", "hibernate", "DAILIES"),
         ]
-        
-        y = 40
-        for label_text, widget_type, config_key, section in misc_items:
-            label = ctk.CTkLabel(master=self.MiscFrame, text=label_text)
-            label.place(x=10, y=y)
-            if widget_type == "checkbox":
-                cb = ctk.CTkCheckBox(master=self.MiscFrame, text=None, onvalue=True, offvalue=False)
-                cb.place(x=200, y=y)
-                self.activity_widgets[config_key] = cb
-                if self.config.getboolean(section, config_key, fallback=False):
-                    cb.select()
-            elif widget_type == "entry":
-                entry = ctk.CTkEntry(master=self.MiscFrame, height=20, width=25)
-                entry.insert('end', self.config.get(section, config_key, fallback='0'))
-                entry.place(x=200, y=y)
-                self.activity_widgets[config_key] = entry
-            y += y_offset
-                
-        # Save button
+
+        # Body scrolls if the window is too small; the Save bar below it is always visible
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        self.body = ctk.CTkScrollableFrame(master=self, fg_color="transparent")
+        self.body.grid(row=0, column=0, sticky="nsew", padx=6, pady=(6, 0))
+        # one container per column (created before the sections so they draw on top of it);
+        # sections are packed into whichever column the current layout puts them in
+        self.columns = [ctk.CTkFrame(master=self.body, fg_color="transparent") for _ in range(3)]
+
+        self.sections = [
+            self._section("Activities:", activities, self.activity_widgets, entry_default='0'),
+            self._section("Arena:", arena_items, self.arena_widgets, entry_default='5'),
+            self._section("Events:", events_items, self.events_widgets),
+            self._section("Bounties:", bounties_items, self.bounties_widgets, entry_default='0'),
+            self._section("Misc:", misc_items, self.activity_widgets, entry_default='0'),
+        ]
+
+        bar = ctk.CTkFrame(master=self, fg_color="transparent")
+        bar.grid(row=1, column=0, sticky="ew", pady=10)
+        bar.grid_columnconfigure(0, weight=1)
         self.activitySaveButton = ctk.CTkButton(
-            master=self,
+            master=bar,
             text="Save",
             fg_color=["#10B981", "#059669"],
             hover_color=["#059669", "#047857"],
-            width=120,
+            width=140,
             command=self.activity_save
         )
-        self.activitySaveButton.place(x=320, y=520)
-        
+        self.activitySaveButton.grid(row=0, column=0)
+
+        self._columns = None
+        self._reflow(3)
+        self.body.bind("<Configure>", self._on_resize, add="+")
+
+        # Start at the size the content needs, but never larger than the screen
+        self.update_idletasks()
+        scale = ctk.ScalingTracker.get_window_scaling(self) if hasattr(ctk, "ScalingTracker") else 1.0
+        need_w = int((3 * self.SECTION_WIDTH + 60) * scale)
+        content_h = max(c.winfo_reqheight() for c in self.columns)  # tallest column, already in real pixels
+        need_h = content_h + int(90 * scale)                           # + Save bar and padding
+        w = min(need_w, self.winfo_screenwidth() - 40)
+        h = min(need_h, self.winfo_screenheight() - 120)
+        self.geometry(f"{int(w / scale)}x{int(h / scale)}")
+
+    def _section(self, title, items, store, entry_default='0'):
+        """One titled box with a label + checkbox/entry per row"""
+        frame = ctk.CTkFrame(master=self.body)
+        frame.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(master=frame, text=title, font=("Arial", 15, 'bold')).grid(
+            row=0, column=0, columnspan=2, sticky="w", padx=10, pady=(8, 4))
+        for row, item in enumerate(items, start=1):
+            label_text, widget_type, config_key, section = item[:4]
+            indent = len(item) > 4 and item[4]
+            ctk.CTkLabel(master=frame, text=label_text, anchor="w").grid(
+                row=row, column=0, sticky="w", padx=(40 if indent else 10, 6), pady=2)
+            if widget_type == "checkbox":
+                widget = ctk.CTkCheckBox(master=frame, text="", width=24, onvalue=True, offvalue=False)
+                if self.config.getboolean(section, config_key, fallback=False):
+                    widget.select()
+            else:
+                widget = ctk.CTkEntry(master=frame, height=24, width=40, justify="center")
+                widget.insert('end', self.config.get(section, config_key, fallback=entry_default))
+            widget.grid(row=row, column=1, sticky="e", padx=(0, 10), pady=2)
+            store[config_key] = widget
+        ctk.CTkFrame(master=frame, height=6, fg_color="transparent").grid(row=len(items) + 1, column=0)
+        return frame
+
+    def _on_resize(self, event):
+        scale = ctk.ScalingTracker.get_window_scaling(self) if hasattr(ctk, "ScalingTracker") else 1.0
+        cols = max(1, min(3, int(event.width / scale) // self.SECTION_WIDTH))
+        self._reflow(cols)
+
+    def _reflow(self, cols):
+        """3 columns: Activities | Arena+Events | Bounties+Misc. Fewer columns stack the rest."""
+        if cols == self._columns:
+            return
+        self._columns = cols
+        layout = {3: [[0], [1, 2], [3, 4]], 2: [[0], [1, 2, 3, 4]], 1: [[0, 1, 2, 3, 4]]}[cols]
+        for section in self.sections:
+            section.pack_forget()
+        for c, column in enumerate(self.columns):
+            self.body.grid_columnconfigure(c, weight=1 if c < cols else 0, uniform="col" if c < cols else "")
+            if c < cols:
+                column.grid(row=0, column=c, sticky="new")
+            else:
+                column.grid_remove()
+        for col, idxs in enumerate(layout):
+            for i in idxs:
+                self.sections[i].pack(in_=self.columns[col], fill="x", padx=5, pady=5)
+                self.sections[i].lift()
+
     def activity_save(self) -> None:
         """Save all settings"""
         for config_key, widget in self.activity_widgets.items():
