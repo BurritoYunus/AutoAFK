@@ -154,11 +154,162 @@ class ShopActivities(BaseActivity):
         self.wait(3)  # Long wait else Twisted Realm isn't found after if enabled
 
     def clear_merchant(self) -> bool:
-        """Collect merchant deals and nobles"""
+        """Collect free merchant deals and pass rewards.
+
+        Uses the redesigned store (Visiting Merchants / Monthly / Growth / Basic
+        Emporium) when it is detected, otherwise the old merchant flow.
+        """
         logger.blue("Attempting to collect merchant deals")
 
         self.controller.tap(120, 300, seconds=5)
 
+        if self._is_new_store(retry=3):
+            result = self._clear_merchant_emporium()
+        else:
+            logger.info("    New store layout not found, using old merchant flow")
+            result = self._clear_merchant_legacy()
+
+        logger.green("Merchant deals collected")
+        self.controller.recover(silent=True)
+        return result
+
+    # ------------------------------------------------------------------
+    # Redesigned store (Oct 2026)
+    # ------------------------------------------------------------------
+
+    # Bottom bar: label positions to tap
+    EMPORIUMS = {
+        'Visiting Merchants': (277, 1863),
+        'Monthly Emporium': (505, 1863),
+        'Growth Emporium': (730, 1863),
+        'Basic Emporium': (955, 1863),
+    }
+    # The red ! badge of a bottom-bar entry sits about 95px right of its label centre
+    EMPORIUM_BADGE_DX = 95
+    BOTTOM_BADGE_REGION = (0, 1820, 1080, 70)
+    # Tab bar above the bottom bar: badges sit on the top-right corner of each tab
+    TAB_BADGE_REGION = (0, 1490, 1080, 60)
+    TAB_FROM_BADGE = (-58, 130)  # badge centre -> tab centre
+    # Content area between the top bar and the tab bar
+    CONTENT_REGION = (0, 120, 1080, 1390)
+    # Spot that closes reward popups without hitting anything on the pages
+    DISMISS = (540, 140)
+    # Pass tabs (Champions of Esperia, Twisted Bounties, Regal Rewards)
+    PASS_COMMON_X = 220
+    PASS_MARKER_X = 437
+    PASS_ROW_YS = (903, 1090, 1278, 1440)
+    PASS_MARKER_YS = (903, 1090, 1278, 1460)  # milestone diamond, bright once reached
+
+    def _is_new_store(self, retry: int = 1) -> bool:
+        for _ in range(retry):
+            if (self.image.is_visible('labels/store/growth_emporium', confidence=0.85, seconds=0, suppress=True) or
+                    self.image.is_visible('labels/store/visiting_merchants', confidence=0.85, seconds=0,
+                                          suppress=True)):
+                return True
+            self.wait(1)
+        return False
+
+    def _badges(self, region) -> list:
+        """Centres of red ! badges inside region"""
+        boxes = self.image.find_all_images('buttons/store/red_badge', confidence=0.88, region=region)
+        return [(x + w // 2, y + h // 2) for x, y, w, h in boxes]
+
+    def _clear_merchant_emporium(self) -> bool:
+        for name, (x, y) in self.EMPORIUMS.items():
+            badges = self._badges(self.BOTTOM_BADGE_REGION)
+            if not any(abs(bx - (x + self.EMPORIUM_BADGE_DX)) < 40 for bx, _ in badges):
+                continue
+            logger.purple(f"    Checking {name}")
+            self.controller.tap(x, y, seconds=3)
+            self._clear_badged_tabs(name)
+        return True
+
+    def _clear_badged_tabs(self, emporium: str):
+        """Open every tab with a red ! badge and collect what is free there"""
+        handled = []
+        for scroll in range(2):
+            for _ in range(8):  # safety limit per tab-bar position
+                pending = [b for b in self._badges(self.TAB_BADGE_REGION)
+                           if all(abs(b[0] - h[0]) > 40 for h in handled)]
+                if not pending:
+                    break
+                bx, by = pending[0]
+                handled.append((bx, by))
+                tx, ty = bx + self.TAB_FROM_BADGE[0], by + self.TAB_FROM_BADGE[1]
+                self.controller.tap(tx, ty, seconds=3)
+                self._collect_tab(emporium, tx, bx)
+            # Some emporiums have more tabs off-screen to the right; look there once
+            if scroll == 0 and emporium == 'Basic Emporium':
+                self.controller.swipe(900, 1650, 200, 1650, 600, seconds=2)
+                handled = []
+            else:
+                break
+
+    def _collect_tab(self, emporium: str, tab_x: int, badge_x: int):
+        if self._is_pass_tab(emporium, tab_x):
+            self._collect_pass_rewards(badge_x)
+        else:
+            self._collect_free_deals()
+
+    def _is_pass_tab(self, emporium: str, tab_x: int) -> bool:
+        if self.image.find_image('labels/store/unlock_premium', confidence=0.8, grayscale=True,
+                                 region=(0, 580, 400, 100)) is not None:
+            return True
+        # Premium pass already bought: Monthly Emporium tabs 2-4 are the passes
+        return emporium == 'Monthly Emporium' and tab_x > 360
+
+    def _collect_pass_rewards(self, badge_x: int):
+        """Claim reached, unclaimed rewards in the free (Common) column of a pass"""
+        logger.purple("    Collecting pass rewards (Common column)")
+        tapped = set()
+        for _ in range(3):
+            screenshot = self.device.get_screenshot()
+            gray = screenshot.convert('L')
+            checks = self.image.find_all_images('buttons/store/claimed_check', confidence=0.85,
+                                                region=(150, 820, 150, 680), screenshot=screenshot)
+            new_taps = False
+            for row_y, marker_y in zip(self.PASS_ROW_YS, self.PASS_MARKER_YS):
+                reached = gray.getpixel((self.PASS_MARKER_X, marker_y)) > 180
+                claimed = any(cy - 60 < row_y < cy + ch + 60 for _, cy, _, ch in checks)
+                if reached and not claimed and row_y not in tapped:
+                    tapped.add(row_y)
+                    self.controller.tap(self.PASS_COMMON_X, row_y, seconds=2)
+                    self.controller.tap(*self.DISMISS, seconds=1)
+                    new_taps = True
+            if not new_taps or not self._tab_still_badged(badge_x):
+                break
+
+    def _tab_still_badged(self, badge_x: int) -> bool:
+        """True if the tab whose badge was at badge_x still shows a red !"""
+        return any(abs(bx - badge_x) < 40 for bx, _ in self._badges(self.TAB_BADGE_REGION))
+
+    def _collect_free_deals(self):
+        """Tap only items whose price label is 'Free' - never a price button"""
+        for page in range(2):
+            tapped = []
+            for _ in range(5):
+                frees = [(x + w // 2, y + h // 2) for x, y, w, h in
+                         self.image.find_all_images('buttons/store/free', confidence=0.88,
+                                                    region=self.CONTENT_REGION)]
+                # Each Free spot is tapped once per page, in case the label stays after claiming
+                frees = [f for f in frees if all(abs(f[0] - t[0]) > 30 or abs(f[1] - t[1]) > 30 for t in tapped)]
+                if not frees:
+                    break
+                fx, fy = frees[0]
+                tapped.append((fx, fy))
+                logger.purple("    Collecting free deal")
+                self.controller.tap(fx, fy, seconds=3)
+                self.controller.tap(*self.DISMISS, seconds=2)
+            if page == 0:
+                # Lower cards may be hidden behind the tab bar
+                self.controller.swipe(540, 1300, 540, 800, 600, seconds=2)
+
+    # ------------------------------------------------------------------
+    # Old store layout (fallback)
+    # ------------------------------------------------------------------
+
+    def _clear_merchant_legacy(self) -> bool:
+        """Old merchant flow; expects the merchant screen to be open already"""
         # Check for Fun in the Wild event
         if self.image.is_visible('buttons/funinthewild', click=True, seconds=2):
             self.controller.tap(250, 1820, seconds=2)  # Ticket
@@ -264,6 +415,4 @@ class ShopActivities(BaseActivity):
             self.controller.tap(70, 1810)
             self.controller.tap(70, 1810)
 
-        logger.green("Merchant deals collected")
-        self.controller.recover(silent=True)
         return True

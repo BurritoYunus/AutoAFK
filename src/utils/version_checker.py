@@ -6,10 +6,16 @@ from typing import Optional, Tuple
 logger = logging.getLogger(__name__)
 
 # Import version and repo from main module
+import re
+import sys
 import __main__
 CURRENT_VERSION = __main__.VERSION
 GITHUB_API_URL = __main__.GITHUB_API_URL
 GITHUB_REPO = __main__.GITHUB_REPO
+GITHUB_BRANCH = getattr(__main__, 'GITHUB_BRANCH', 'master')
+# VERSION line in main.py on the default branch - used by source installs when
+# the repo has no releases yet
+GITHUB_RAW_MAIN_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/main.py"
 
 
 class VersionChecker:
@@ -25,6 +31,13 @@ class VersionChecker:
         """
         try:
             response = requests.get(GITHUB_API_URL, timeout=5)
+            if response.status_code == 404:
+                # No release published yet. Compiled builds can only update from a
+                # release ZIP; source installs can follow the branch instead.
+                if getattr(sys, 'frozen', False):
+                    logger.info(f"No releases published on {GITHUB_REPO} yet")
+                    return None
+                return VersionChecker.get_branch_version()
             response.raise_for_status()
             
             data = response.json()
@@ -38,6 +51,18 @@ class VersionChecker:
             logger.error(f"Error checking version: {e}")
             return None
     
+    @staticmethod
+    def get_branch_version() -> Optional[str]:
+        """Read VERSION from main.py on the default branch"""
+        try:
+            response = requests.get(GITHUB_RAW_MAIN_URL, timeout=5)
+            response.raise_for_status()
+            match = re.search(r'^VERSION\s*=\s*["\']([^"\']+)["\']', response.text, re.MULTILINE)
+            return match.group(1) if match else None
+        except requests.RequestException as e:
+            logger.warning(f"Failed to check for updates: {e}")
+            return None
+
     @staticmethod
     def compare_versions(current: str, latest: str) -> int:
         """

@@ -10,11 +10,18 @@ import shutil
 import tempfile
 import subprocess
 import time
+import re
 from pathlib import Path
 
-# GitHub Repository - ALWAYS focus on Hammanek/AutoAFK
-GITHUB_REPO = "Hammanek/AutoAFK"
+# GitHub Repository - updates come from the BurritoYunus/AutoAFK fork
+GITHUB_REPO = "BurritoYunus/AutoAFK"
+GITHUB_BRANCH = "master"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+GITHUB_BRANCH_ZIP_URL = f"https://api.github.com/repos/{GITHUB_REPO}/zipball/{GITHUB_BRANCH}"
+GITHUB_RAW_MAIN_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/main.py"
+
+# Never overwritten when updating a source install
+SOURCE_KEEP = {'settings.ini', 'logs', 'debug', 'venv', '.venv', 'env', '.git', '.idea', '.vscode'}
 
 
 
@@ -53,6 +60,108 @@ def get_latest_release():
     except Exception as e:
         print(f"[ERROR] Failed to check for updates: {e}")
         return None, None
+
+
+def get_latest_source():
+    """Latest source code: the latest release's zipball, or the branch if there is no release"""
+    print("[1/7] Checking for updates...")
+    try:
+        response = requests.get(GITHUB_API_URL, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            version = data.get('tag_name', '').lstrip('v')
+            print(f"[INFO] Latest release: {version}")
+            return version, data.get('zipball_url')
+
+        if response.status_code == 404:
+            print(f"[INFO] No releases on {GITHUB_REPO}, using the {GITHUB_BRANCH} branch")
+            raw = requests.get(GITHUB_RAW_MAIN_URL, timeout=10)
+            raw.raise_for_status()
+            match = re.search(r'^VERSION\s*=\s*["\']([^"\']+)["\']', raw.text, re.MULTILINE)
+            version = match.group(1) if match else GITHUB_BRANCH
+            print(f"[INFO] Latest version on {GITHUB_BRANCH}: {version}")
+            return version, GITHUB_BRANCH_ZIP_URL
+
+        response.raise_for_status()
+    except Exception as e:
+        print(f"[ERROR] Failed to check for updates: {e}")
+    return None, None
+
+
+def install_source_update(extract_dir):
+    """Copy a downloaded source tree over the current folder, keeping settings and local folders"""
+    print("[6/7] Installing update...")
+    try:
+        # GitHub zipballs contain one top folder named owner-repo-<sha>
+        entries = [os.path.join(extract_dir, e) for e in os.listdir(extract_dir)]
+        dirs = [e for e in entries if os.path.isdir(e)]
+        source_dir = dirs[0] if len(dirs) == 1 and len(entries) == 1 else extract_dir
+
+        if not os.path.exists(os.path.join(source_dir, 'main.py')):
+            print(f"[ERROR] main.py not found in the downloaded files")
+            return False
+
+        copied = 0
+        for item in os.listdir(source_dir):
+            if item in SOURCE_KEEP:
+                continue
+            src = os.path.join(source_dir, item)
+            dst = os.path.join(os.getcwd(), item)
+            try:
+                if os.path.isdir(src):
+                    shutil.copytree(src, dst, dirs_exist_ok=True)
+                else:
+                    shutil.copy2(src, dst)
+                copied += 1
+            except PermissionError:
+                if item.startswith('AutoAFKUpdater'):
+                    # The running updater can't replace itself; update.bat applies it next time
+                    shutil.copy2(src, dst + '.new')
+                else:
+                    print(f"[WARNING] Could not copy {item} (in use)")
+            except Exception as e:
+                print(f"[WARNING] Could not copy {item}: {e}")
+
+        print(f"[INFO] Installed {copied} items")
+
+        if os.path.exists('requirements.txt'):
+            print("[INFO] Updating Python packages...")
+            subprocess.call([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt', '--quiet'])
+        return True
+    except Exception as e:
+        print(f"[ERROR] Installation failed: {e}")
+        return False
+
+
+def update_git_checkout():
+    """Source install that is a git clone: fast-forward it instead of copying files"""
+    print("[INFO] Git checkout found, pulling latest changes...")
+    try:
+        code = subprocess.call(['git', 'pull', '--ff-only'])
+        if code != 0:
+            print("[ERROR] git pull failed - update the clone manually")
+            return False
+        if os.path.exists('requirements.txt'):
+            subprocess.call([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt', '--quiet'])
+        return True
+    except FileNotFoundError:
+        print("[ERROR] git is not installed")
+        return False
+
+
+def restart_source_bot():
+    """Start main.py again with this Python"""
+    print("[7/7] Restarting bot...")
+    try:
+        if sys.platform == 'win32':
+            subprocess.Popen([sys.executable, 'main.py'], creationflags=subprocess.CREATE_NEW_CONSOLE)
+        else:
+            subprocess.Popen([sys.executable, 'main.py'])
+        print("[INFO] Bot restarted!")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Failed to restart bot: {e}")
+        return False
 
 
 def download_update(url, temp_dir):
@@ -113,12 +222,16 @@ def extract_update(zip_path, extract_dir):
         return False
 
 
-def close_running_bot():
+def close_running_bot(source=False):
     """Try to close running AutoAFK.exe"""
     print("[5/7] Closing running bot...")
     try:
         # In auto mode the UI closes itself, just wait for it
         time.sleep(5)
+        if source:
+            # main.py closes itself; don't pkill (it would match this updater too)
+            print("[INFO] Bot closed")
+            return True
         
         # Kill any remaining AutoAFK.exe process as fallback
         if sys.platform == 'win32':
@@ -318,6 +431,10 @@ def main():
             input("Press Enter to exit...")
         return 1
 
+    if not os.path.exists('AutoAFK.exe'):
+        # Running from source (start.bat / python main.py)
+        return update_source(auto_mode)
+
     # Get latest release
     version, download_url = get_latest_release()
     if not version or not download_url:
@@ -411,6 +528,63 @@ def main():
             pass
     
     return 0
+
+
+def update_source(auto_mode):
+    """Update a source install from GitHub"""
+    def done(code):
+        if not auto_mode:
+            input("Press Enter to exit...")
+        return code
+
+    if os.path.isdir('.git'):
+        close_running_bot(source=True)
+        if not update_git_checkout():
+            return done(1)
+        restart_source_bot()
+        return 0
+
+    version, download_url = get_latest_source()
+    if not version or not download_url:
+        return done(1)
+
+    if not auto_mode:
+        print()
+        print(f"Update to version {version}?")
+        print("[WARNING] Bot will be closed and restarted")
+        if input("Continue? (y/n): ").lower() != 'y':
+            print("[INFO] Update cancelled")
+            return 0
+    else:
+        print(f"[AUTO] Updating to version {version}...")
+
+    temp_dir = tempfile.mkdtemp(prefix='afk_arena_bot_update_')
+    backup_dir = tempfile.mkdtemp(prefix='afk_arena_bot_backup_')
+    try:
+        if not backup_settings(backup_dir):
+            return done(1)
+        zip_path = download_update(download_url, temp_dir)
+        if not zip_path:
+            return done(1)
+        extract_dir = os.path.join(temp_dir, 'extracted')
+        os.makedirs(extract_dir, exist_ok=True)
+        if not extract_update(zip_path, extract_dir):
+            return done(1)
+        close_running_bot(source=True)
+        if not install_source_update(extract_dir):
+            restore_backup(backup_dir)
+            return done(1)
+        print()
+        print(f"✓ Successfully updated to version {version}!")
+        restart_source_bot()
+        time.sleep(5)
+        return 0
+    except Exception as e:
+        print(f"[ERROR] Update failed: {e}")
+        restore_backup(backup_dir)
+        return done(1)
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 if __name__ == '__main__':

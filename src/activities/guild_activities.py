@@ -8,7 +8,42 @@ logger = logging.getLogger(__name__)
 
 class GuildActivities(BaseActivity):
     """Handles guild activities"""
-    
+
+    # Guild Hunt building on the new guild "island" layout (bottom centre, 1080x1920)
+    GUILD_HUNT_ISLAND = (558, 1340)
+    # Guild Hunt building on the old guild layout, kept as a fallback
+    GUILD_HUNT_LEGACY = (290, 860)
+
+    def _in_guild_hunts(self, retry: int = 3) -> bool:
+        """True if the Hunting Fields screen is showing"""
+        for _ in range(retry):
+            if (self.image.is_visible('buttons/challenge_tr', confidence=0.7, seconds=0, suppress=True) or
+                    self.image.is_visible('labels/hunting_fields_contract', seconds=0, suppress=True)):
+                return True
+            self.wait(1)
+        return False
+
+    def _open_guild_hunts(self) -> bool:
+        """Open Guild Hunts from the guild screen.
+
+        Taps the Guild Hunt building on the new island layout first, checks that
+        Hunting Fields opened, and falls back to the old building position if not.
+        """
+        for name, (x, y) in (('island', self.GUILD_HUNT_ISLAND),
+                             ('legacy', self.GUILD_HUNT_LEGACY)):
+            self.controller.tap(x, y, seconds=4)  # Guild Hunts building
+            if self._in_guild_hunts(retry=2):
+                self.controller.tap(300, 50)  # Clear popup (as before)
+                logger.debug(f"    Guild Hunts opened via {name} position ({x}, {y})")
+                return True
+            # A popup may be covering Hunting Fields - clear it and check again
+            self.controller.tap(300, 50)
+            if self._in_guild_hunts(retry=2):
+                logger.debug(f"    Guild Hunts opened via {name} position ({x}, {y})")
+                return True
+            logger.debug(f"    Guild Hunts not found after tapping {name} position ({x}, {y})")
+        return False
+
     def handle_guild_hunts(self, skip_hf: bool = False) -> bool:
         """Handle Guild Hunts (Hunting Fields, Wrizz, Soren)"""
         logger.blue("Handling Guild Hunts...")
@@ -30,9 +65,9 @@ class GuildActivities(BaseActivity):
             self.controller.tap(550, 1800)
             
         self.controller.tap(20, 20)  # Clear popups
-        self.controller.tap(290, 860, seconds=4)  # Guild Hunts
-        self.controller.tap(300, 50)  # Clear popup
-        
+        if not self._open_guild_hunts():
+            logger.warning("    Could not confirm Guild Hunts opened, continuing anyway")
+
         # Hunting Fields
         if not skip_hf:
             logger.green("    Trying to battle Hunting Fields")
