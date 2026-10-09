@@ -1,6 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_all
+
 block_cipher = None
+
+# Text recognition: bundle the OCR package with its models and config
+ocr_datas, ocr_binaries, ocr_hidden = collect_all('rapidocr_onnxruntime')
 
 a = Analysis(
     ['main.py'],
@@ -8,10 +13,10 @@ a = Analysis(
     binaries=[
         ('adb.exe', '.'),
         ('AdbWinApi.dll', '.'),
-    ],
+    ] + ocr_binaries,
     datas=[
         ('img', 'img'),  # Copy img folder to _internal/img
-    ],
+    ] + ocr_datas,
     hiddenimports=[
         'PIL._tkinter_finder',
         'customtkinter',
@@ -40,7 +45,9 @@ a = Analysis(
         'src.activities.labyrinth_activities',
         'src.activities.campaign_activities',
         'src.activities.misty_valley',
-    ],
+        'src.core.ocr',
+        'onnxruntime',
+    ] + ocr_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
