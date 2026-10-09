@@ -39,6 +39,7 @@ a = Analysis(
         'src.activities.summon_activities',
         'src.activities.labyrinth_activities',
         'src.activities.campaign_activities',
+        'src.activities.misty_valley',
     ],
     hookspath=[],
     hooksconfig={},
