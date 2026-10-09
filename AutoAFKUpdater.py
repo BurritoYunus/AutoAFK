@@ -403,8 +403,36 @@ def restore_backup(backup_dir):
         return False
 
 
+def prepare_console():
+    """Keep the console from freezing the update.
+
+    On Windows, clicking inside a console window with QuickEdit mode on starts a
+    text selection and pauses the program until a key is pressed, which looks
+    like the updater hanging. Turn QuickEdit off for this window and make sure
+    every line is shown right away.
+    """
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+    if sys.platform != 'win32':
+        return
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            ENABLE_QUICK_EDIT_MODE = 0x0040
+            ENABLE_EXTENDED_FLAGS = 0x0080
+            kernel32.SetConsoleMode(handle, (mode.value & ~ENABLE_QUICK_EDIT_MODE) | ENABLE_EXTENDED_FLAGS)
+    except Exception:
+        pass
+
+
 def main():
     """Main updater function"""
+    prepare_console()
     print_header()
 
     # Parse arguments
