@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 # Version - Update this when releasing new version
-VERSION = "2.0.8"
+VERSION = "2.0.10"
 
 # GitHub Repository (updates are fetched from here)
 GITHUB_REPO = "BurritoYunus/AutoAFK"
@@ -159,7 +159,13 @@ class App(ctk.CTk):
                         self.textbox.insert('end', f'Version {latest} changes:\n', 'yellow')
                         self.textbox.insert('end', f'{notes[:500]}{"..." if len(notes) > 500 else ""}\n\n', 'warning')
 
-                    if self.config.getboolean('ADVANCED', 'autoupdate', fallback=False):
+                    installed = self._installed_release_version()
+                    if installed and installed == latest:
+                        # The updater already installed this release but the app still
+                        # reports an older VERSION: updating again would loop forever.
+                        self.textbox.insert('end', f'⚠️ Version {latest} is already installed but this build reports {current}. '
+                                                   'Skipping auto-update to avoid a loop.\n\n', 'warning')
+                    elif self.config.getboolean('ADVANCED', 'autoupdate', fallback=False):
                         self.textbox.insert('end', '🔄 Auto-update enabled, starting updater...\n\n', 'orange')
                         self.after(2000, self._run_updater)
                     else:
@@ -172,6 +178,17 @@ class App(ctk.CTk):
 
         threading.Thread(target=check, daemon=True).start()
     
+    @staticmethod
+    def _installed_release_version():
+        """Version the updater last installed (from .installed_version), if any"""
+        base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
+            else os.path.dirname(os.path.abspath(__file__))
+        try:
+            with open(os.path.join(base_dir, '.installed_version'), encoding='utf-8') as f:
+                return f.read().strip() or None
+        except OSError:
+            return None
+
     def _open_link(self, event) -> None:
         """Open URL in browser when clicked"""
         import webbrowser

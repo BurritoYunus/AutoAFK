@@ -183,7 +183,7 @@ def download_update(url, temp_dir):
                     downloaded += len(chunk)
                     if total_size > 0:
                         percent = (downloaded / total_size) * 100
-                        print(f"\r[INFO] Downloaded: {percent:.1f}%", end='')
+                        print(f"\r[INFO] Downloaded: {percent:.1f}%", end='', flush=True)
         
         print()
         print(f"[INFO] Downloaded: {os.path.getsize(zip_path) / 1024 / 1024:.1f} MB")
@@ -389,6 +389,22 @@ def restart_bot():
 
 
 
+INSTALLED_MARKER = '.installed_version'
+
+
+def write_installed_marker(version):
+    """Remember which release was just installed.
+
+    The app reads this to avoid an update loop if a release ever reports a
+    different VERSION than its tag.
+    """
+    try:
+        with open(INSTALLED_MARKER, 'w', encoding='utf-8') as f:
+            f.write(version.strip())
+    except Exception as e:
+        print(f"[WARNING] Could not write {INSTALLED_MARKER}: {e}")
+
+
 def restore_backup(backup_dir):
     """Restore settings from backup"""
     print("[INFO] Restoring settings from backup...")
@@ -403,8 +419,36 @@ def restore_backup(backup_dir):
         return False
 
 
+def prepare_console():
+    """Keep the console from freezing the update.
+
+    On Windows, clicking inside a console window with QuickEdit mode on starts a
+    text selection and pauses the program until a key is pressed, which looks
+    like the updater hanging. Turn QuickEdit off for this window and make sure
+    every line is shown right away.
+    """
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+    if sys.platform != 'win32':
+        return
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.GetStdHandle(-10)  # STD_INPUT_HANDLE
+        mode = ctypes.c_uint32()
+        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            ENABLE_QUICK_EDIT_MODE = 0x0040
+            ENABLE_EXTENDED_FLAGS = 0x0080
+            kernel32.SetConsoleMode(handle, (mode.value & ~ENABLE_QUICK_EDIT_MODE) | ENABLE_EXTENDED_FLAGS)
+    except Exception:
+        pass
+
+
 def main():
     """Main updater function"""
+    prepare_console()
     print_header()
 
     # Parse arguments
@@ -496,6 +540,7 @@ def main():
         
         print()
         print("=" * 60)
+        write_installed_marker(version)
         print(f"✓ Successfully updated to version {version}!")
         print("=" * 60)
         print()
@@ -575,6 +620,7 @@ def update_source(auto_mode):
             restore_backup(backup_dir)
             return done(1)
         print()
+        write_installed_marker(version)
         print(f"✓ Successfully updated to version {version}!")
         restart_source_bot()
         time.sleep(5)
