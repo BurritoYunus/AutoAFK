@@ -56,6 +56,7 @@ SKIP_GOLDS = {'victorious'}
 
 LAST_STAGE = 20
 MAX_ATTEMPTS_PER_STAGE = 4
+MAX_DEFEATS_PER_STAGE = 2
 
 # Formation screen
 FACTION_Y = 1678
@@ -161,6 +162,7 @@ class StageInfo:
 @dataclass
 class StageMemory:
     attempts: int = 0
+    defeats: int = 0
     silver_impossible: bool = False
     gold_impossible: bool = False
 
@@ -186,7 +188,7 @@ def next_battle(info: StageInfo, mem: StageMemory) -> Optional[BattlePlan]:
 
     if not (silver_needed or gold_constraint or gold_win or stone_needed):
         return None
-    if mem.attempts >= MAX_ATTEMPTS_PER_STAGE:
+    if mem.attempts >= MAX_ATTEMPTS_PER_STAGE or mem.defeats >= MAX_DEFEATS_PER_STAGE:
         return None
 
     if silver_needed and gold_constraint:
@@ -198,8 +200,9 @@ def next_battle(info: StageInfo, mem: StageMemory) -> Optional[BattlePlan]:
     if gold_constraint:
         return BattlePlan('Gold', gold_plans(info.gold_kind), covers_gold=True,
                           fallback_any=stone_needed)
-    # Only a plain win is left (Stone and/or a win-type Gold)
-    plans = [silver_plan(info.silver_kind)] if info.silver_kind in SILVER_GROUPS else []
+    # Only a plain win is left (Stone and/or a win-type Gold).
+    # After a defeat, go straight to the 5 strongest heroes.
+    plans = [silver_plan(info.silver_kind)] if info.silver_kind in SILVER_GROUPS and not mem.defeats else []
     return BattlePlan('Win', plans + [any_plan()])
 
 
@@ -299,30 +302,50 @@ class MistyValleyActivities(BaseActivity):
         return self._visible('labels/misty/map_title', 0.8, (300, 20, 480, 100))
 
     def enter(self) -> bool:
-        """Campaign -> Events -> Adventure -> Misty Valley -> Continue Adventure"""
+        """Campaign -> Events -> Adventure -> Misty Valley -> world map flag -> Continue Adventure.
+
+        Works out which of those screens is showing and does the next step, so it
+        copes with the game remembering the Adventure tab or skipping a screen.
+        """
         logger.info("    Opening Misty Valley")
         self.controller.confirm_location('campaign')
         self.controller.expand_menus()
-        if not self.image.click_image('buttons/events', confidence=0.8, retry=3, seconds=3, suppress=True):
-            logger.warning("    Events button not found")
-            return False
-        # Adventure tab, then the Misty Valley banner
-        if not self.image.click_image('labels/misty/entry_adventure', confidence=0.7, retry=2,
-                                      seconds=2, suppress=True, region=(300, 1700, 400, 219)):
-            self.controller.tap(490, 1830, seconds=2)
-        if not self.image.click_image('labels/misty/entry_event_banner', confidence=0.7, retry=3,
-                                      seconds=4, suppress=True):
-            self.controller.tap(540, 400, seconds=4)
-        # World map: tap the Misty Valley flag (above its label)
-        if not self.image.click_image('labels/misty/entry_world_icon', confidence=0.7, retry=3,
-                                      seconds=2, suppress=True, xyshift=(0, -90)):
-            self.controller.tap(540, 990, seconds=2)
-        if not self.image.click_image('labels/misty/entry_continue', confidence=0.7, retry=3,
-                                      seconds=2, suppress=True):
-            self.controller.tap(540, 1525, seconds=2)
-        if self._wait_for('labels/misty/map_title', timeout=20, region=(300, 20, 480, 100)):
-            self.wait(2)   # let the camera settle on the cart
-            return True
+        end = time.time() + 60
+        idle = 0
+        while time.time() < end:
+            if self._stopped():
+                return False
+            _, gray = self._shot()
+            if self._score(gray, 'labels/misty/map_title', (300, 20, 480, 100))[0] >= 0.8:
+                self.wait(2)   # let the camera settle on the cart
+                return True
+            # "Continue Adventure" popup
+            score, pos = self._score(gray, 'labels/misty/entry_continue', (300, 1400, 480, 260))
+            if score >= 0.8:
+                self.controller.tap(*pos, seconds=2)
+                continue
+            # World map: the flag is just above the "Misty Valley" label
+            score, pos = self._score(gray, 'labels/misty/entry_world_icon', (0, 450, 1080, 1300))
+            if score >= 0.8:
+                self.controller.tap(pos[0], pos[1] - 140, seconds=2)
+                continue
+            # Events screen: open the Adventure tab, then the Misty Valley banner
+            if self._score(gray, 'labels/misty/entry_events_header', (250, 0, 580, 140))[0] >= 0.8:
+                score, pos = self._score(gray, 'labels/misty/entry_event_banner', (0, 240, 1080, 1450))
+                if score >= 0.8:
+                    self.controller.tap(*pos, seconds=3)
+                else:
+                    self.controller.tap(490, 1835, seconds=2)
+                continue
+            # Campaign screen: Events button
+            if self.image.click_image('buttons/events', confidence=0.8, seconds=3, suppress=True,
+                                      region=(0, 150, 300, 1100)):
+                continue
+            # Loading or a transition: wait, then try to get back to campaign
+            idle += 1
+            if idle in (8, 16):
+                self.controller.recover(silent=True)
+            time.sleep(0.5)
         if not self._stopped():
             logger.error("    Misty Valley map not found")
         return False
@@ -591,7 +614,16 @@ class MistyValleyActivities(BaseActivity):
         if result is True:
             logger.green(f"    Stage {info.number}: victory")
         elif result is False:
+            mem.defeats += 1
             logger.warning(f"    Stage {info.number}: defeat")
+            # That team was too weak: drop the challenge it was built for, so the
+            # next battle uses the 5 strongest heroes and at least wins the stage
+            if plan.covers_silver and not mem.silver_impossible:
+                mem.silver_impossible = True
+                logger.warning(f"    Giving up the Silver challenge on stage {info.number}")
+            if plan.covers_gold and not mem.gold_impossible:
+                mem.gold_impossible = True
+                logger.warning(f"    Giving up the Gold challenge on stage {info.number}")
         else:
             logger.warning(f"    Stage {info.number}: battle result not found")
             self.controller.recover(silent=True)
@@ -648,6 +680,10 @@ class MistyValleyActivities(BaseActivity):
                 mem = memory.setdefault(n, StageMemory())
                 plan = next_battle(info, mem)
                 if plan is None:
+                    if not info.stone_done:
+                        logger.error(f"    Couldn't win stage {n}, stopping")
+                        self._close_stage()
+                        return False
                     logger.green(f"    Stage {n} done")
                     finished.add(n)
                     self._close_stage()

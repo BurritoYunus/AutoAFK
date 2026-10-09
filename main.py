@@ -716,6 +716,7 @@ class App(ctk.CTk):
             logger.info("Device connected, running activity...")
             
             # Run specific activity
+            result = None
             if activity == "Arena of Heroes":
                 activity_mgr.arena.battle_arena_of_heroes(battles, 1, 
                                                          self.activity_pause_event,
@@ -731,9 +732,14 @@ class App(ctk.CTk):
             elif activity == "Guild Hunts":
                 activity_mgr.guild.handle_guild_hunts()
             elif activity == "Misty Valley":
-                activity_mgr.misty.run(self.activity_stop_event, self.activity_pause_event)
-                
-            logger.info("Activity completed!")
+                result = activity_mgr.misty.run(self.activity_stop_event, self.activity_pause_event)
+
+            if self.activity_stop_event.is_set():
+                logger.warning("Activity stopped")
+            elif result is False:
+                logger.warning(f"{activity} stopped before finishing (see the messages above)")
+            else:
+                logger.info("Activity completed!")
         except Exception as e:
             logger.error(f"Activity error: {e}", exc_info=True)
         finally:
