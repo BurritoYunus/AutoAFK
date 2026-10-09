@@ -12,6 +12,7 @@ from src.activities.misc_activities import MiscActivities
 from src.activities.summon_activities import SummonActivities
 from src.activities.labyrinth_activities import LabyrinthActivities
 from src.activities.campaign_activities import CampaignActivities
+from src.activities.misty_valley import MistyValleyActivities
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,8 @@ class ActivityManager:
                                             game_controller, config, notification_manager)
         self.campaign = CampaignActivities(device_manager, image_recognition,
                                           game_controller, config, notification_manager)
+        self.misty = MistyValleyActivities(device_manager, image_recognition,
+                                           game_controller, config, notification_manager)
         
         logger.debug("ActivityManager initialized with all modules")
     
@@ -76,5 +79,6 @@ class ActivityManager:
             'misc': self.misc,
             'summon': self.summon,
             'labyrinth': self.labyrinth,
-            'campaign': self.campaign
+            'campaign': self.campaign,
+            'misty': self.misty
         }

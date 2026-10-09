@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 # Version - Update this when releasing new version
-VERSION = "2.0.10"
+VERSION = "2.1.0"
 
 # GitHub Repository (updates are fetched from here)
 GITHUB_REPO = "BurritoYunus/AutoAFK"
@@ -323,7 +323,8 @@ class App(ctk.CTk):
                 "Fight of Fates",
                 "Battle of Blood",
                 "Heroes of Esperia",
-                "Guild Hunts"
+                "Guild Hunts",
+                "Misty Valley"
             ],
             width=160
         )
@@ -708,6 +709,8 @@ class App(ctk.CTk):
                 activity_mgr.misc.handle_heroes_of_esperia(battles, 4)
             elif activity == "Guild Hunts":
                 activity_mgr.guild.handle_guild_hunts()
+            elif activity == "Misty Valley":
+                activity_mgr.misty.run(self.activity_stop_event, self.activity_pause_event)
                 
             logger.info("Activity completed!")
         except Exception as e:

@@ -68,4 +68,5 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         files: AutoAFK.zip
-        generate_release_notes: true
+        # Notes come from the release page; generating them here duplicated them
+        generate_release_notes: false
