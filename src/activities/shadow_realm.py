@@ -212,10 +212,21 @@ class ShadowRealmActivities(BaseActivity):
         return sorted(out, key=lambda c: (c[1] // 40, c[0]))
 
     def _collect_rewards(self, texts) -> int:
-        receives = self._find(texts, 'receive', (0, 250, 1080, 1700))
+        """Tap every Receive. The rewards popup only appears once all nodes of a
+        floor are received, so it's closed after the last Receive of each floor."""
+        receives = sorted(self._find(texts, 'receive', (0, 250, 1080, 1700)), key=lambda r: (r[1] // 40, r[0]))
+        # group the buttons by floor (same row)
+        rows: List[List[Tuple[int, int]]] = []
         for x, y in receives:
-            self.controller.tap(x, y, seconds=2)
-            self.controller.tap(*CLOSE_POPUP, seconds=1.5)   # close the rewards popup
+            if rows and abs(rows[-1][0][1] - y) < 40:
+                rows[-1].append((x, y))
+            else:
+                rows.append([(x, y)])
+        for row in rows:
+            for x, y in row:
+                self.controller.tap(x, y, seconds=1.5)
+            self._settle()
+            self.controller.tap(*CLOSE_POPUP, seconds=1.5)   # close the floor's rewards popup
         if receives:
             _say(f"    🎁 Collected {len(receives)} reward{'s' if len(receives) > 1 else ''}", 'green')
         return len(receives)
@@ -283,14 +294,10 @@ class ShadowRealmActivities(BaseActivity):
         if screen not in ('result', 'tower'):
             screen, texts = self._wait_screen({'result', 'tower'}, timeout=BATTLE_TIMEOUT)
         if screen == 'result':
-            # The VICTORY banner animates in; only a clearly read DEFEAT counts as a loss
-            lost = bool(self._find(texts, 'defeat'))
+            # Shadow Realm battles can't be lost
             self.controller.tap(540, 1800, seconds=2)
             self._wait_screen({'tower'}, timeout=20)
-            if lost:
-                _say("    ✖ Defeat", 'orange')
-            else:
-                _say("    ✔ Victory", 'green')
+            _say("    ✔ Victory", 'green')
             return 'won'
         if screen == 'tower':
             # Later floors finish the battle in the background, with a timer on the node
