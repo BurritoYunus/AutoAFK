@@ -48,18 +48,31 @@ class TowerActivities(BaseActivity):
             self.controller.recover()
             return False
     
+    # Hellscape on the new guild "island" layout (portal bottom-left, 1080x1920)
+    HELLSCAPE_ISLAND = (345, 1520)
+    # Hellscape building on the old guild layout, kept as a fallback
+    HELLSCAPE_LEGACY = (775, 875)
+
     def handle_twisted_realm(self) -> bool:
         """Attempt Twisted Realm battle"""
         logger.blue("Attempting to run Twisted Realm")
         
-        self.controller.confirm_location('ranhorn', 
-                                        region=self.controller.BOUNDARIES['ranhornSelect'])
-        self.controller.tap(380, 360, seconds=6)
-        self.controller.tap(550, 1800)  # Clear chests
-        self.controller.tap(775, 875, seconds=2)
-        self.controller.tap(550, 600, seconds=3)
-        
-        if self.image.is_visible('buttons/nextboss'):
+        opened = False
+        for name, (hx, hy) in (('island', self.HELLSCAPE_ISLAND), ('legacy', self.HELLSCAPE_LEGACY)):
+            self.controller.confirm_location('ranhorn',
+                                            region=self.controller.BOUNDARIES['ranhornSelect'])
+            self.controller.tap(380, 360, seconds=6)  # Guild
+            self.controller.tap(550, 1800)  # Clear chests
+            self.controller.tap(hx, hy, seconds=3)  # Hellscape
+            self.controller.tap(550, 600, seconds=3)  # Twisted Realm (first of the three)
+            if self.image.is_visible('buttons/nextboss', retry=3, suppress=True):
+                logger.debug(f"    Twisted Realm opened via {name} Hellscape position ({hx}, {hy})")
+                opened = True
+                break
+            logger.debug(f"    Twisted Realm not found via {name} Hellscape position, recovering")
+            self.controller.recover(silent=True)
+
+        if opened:
             logger.green("    Twisted Realm found, battling")
             
             if self.image.is_visible('buttons/challenge_tr', retry=5, confidence=0.8, 
