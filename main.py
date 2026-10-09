@@ -326,7 +326,8 @@ class App(ctk.CTk):
                 "Guild Hunts",
                 "Misty Valley"
             ],
-            width=160
+            width=160,
+            command=self._on_activity_selected
         )
         self.activityFormationDropdown.place(x=10, y=55)
         
@@ -339,6 +340,7 @@ class App(ctk.CTk):
         self.pvpEntry = ctk.CTkEntry(master=self.arenaFrame, height=20, width=40)
         self.pvpEntry.insert('end', self.config.get('ACTIVITIES', 'arena_battles', fallback='5'))
         self.pvpEntry.place(x=130, y=92)
+        self._on_activity_selected(self.activityFormationDropdown.get())
         
         # Push Frame
         self.pushFrame = ctk.CTkFrame(master=self, height=180, width=180)
@@ -658,17 +660,36 @@ class App(ctk.CTk):
             self.dailies_thread_running = False
             self.button_state('normal')
             
+    # Activities that don't use the battle count, with the hint shown instead
+    ACTIVITY_HINTS = {
+        "Arcane Labyrinth": "Clears the whole labyrinth",
+        "Guild Hunts": "Runs today's hunts",
+        "Misty Valley": "Clears up to stage 20",
+    }
+
+    def _on_activity_selected(self, activity: str) -> None:
+        """Only show "How many battles?" for activities that use it"""
+        hint = self.ACTIVITY_HINTS.get(activity)
+        if hint:
+            self.pvpLabel.configure(text=hint)
+            self.pvpEntry.place_forget()
+        else:
+            self.pvpLabel.configure(text='How many battles?')
+            self.pvpEntry.place(x=130, y=92)
+
     def activity_manager(self) -> None:
         """Run selected activity"""
         try:
             activity = self.activityFormationDropdown.get()
-            battles = int(self.pvpEntry.get())
-            
-            # Save battles count to config
-            self.config.set('ACTIVITIES', 'arena_battles', str(battles))
-            self.config.save()
-            
-            logger.info(f"Starting {activity} ({battles} battles)...")
+            if activity in self.ACTIVITY_HINTS:
+                battles = 0
+                logger.info(f"Starting {activity}...")
+            else:
+                battles = int(self.pvpEntry.get())
+                # Save battles count to config
+                self.config.set('ACTIVITIES', 'arena_battles', str(battles))
+                self.config.save()
+                logger.info(f"Starting {activity} ({battles} battles)...")
             
             # Initialize modules if not already done
             if not self.device_manager:
