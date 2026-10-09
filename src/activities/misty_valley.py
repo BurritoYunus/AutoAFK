@@ -66,7 +66,6 @@ CLASS_X = {ALL: 180, 'warrior': 282, 'tank': 385, 'ranger': 488, 'mage': 592, 's
 CARD_XS = [130, 333, 535, 737, 940]
 CARD_Y = 1250
 PANEL_EXPAND = (72, 1680)       # "^" when the filter panel is collapsed
-PANEL_COLLAPSE = (75, 1465)     # "v" when expanded
 REMOVE_ALL = (1025, 1105)
 FORMATION_BATTLE = (540, 1830)
 FORMATION_BACK = (60, 1830)
@@ -436,26 +435,50 @@ class MistyValleyActivities(BaseActivity):
     def _in_formation(self, gray) -> bool:
         return self._score(gray, 'labels/misty/formation_remove', (960, 1040, 120, 130))[0] >= 0.8
 
-    def _ensure_panel_expanded(self) -> bool:
-        for tap in (PANEL_EXPAND, PANEL_COLLAPSE):
+    def _panel_expanded(self, gray=None) -> bool:
+        if gray is None:
             _, gray = self._shot()
-            if self._score(gray, 'labels/misty/panel_middle_row', (200, 1500, 380, 150))[0] >= 0.8:
-                return True
-            self.controller.tap(*tap, seconds=1)
-        _, gray = self._shot()
         return self._score(gray, 'labels/misty/panel_middle_row', (200, 1500, 380, 150))[0] >= 0.8
+
+    def _ensure_panel_expanded(self) -> bool:
+        """Open the filter panel. Only ever taps the ^ button of the collapsed panel:
+        the spot of the collapse button is a hero card when the panel is collapsed."""
+        for _ in range(3):
+            _, gray = self._shot()
+            if self._panel_expanded(gray):
+                return True
+            score, pos = self._score(gray, 'labels/misty/panel_expand_btn', (0, 1600, 200, 200))
+            if score >= 0.8:
+                self.controller.tap(*pos, seconds=0.5)
+            # wait for the panel to slide open
+            end = time.time() + 3
+            while time.time() < end:
+                if self._panel_expanded():
+                    return True
+                time.sleep(0.3)
+        return False
 
     def _remove_all(self) -> None:
         self.controller.tap(*REMOVE_ALL, seconds=1)
-        _, gray = self._shot()
-        score, pos = self._score(gray, 'labels/misty/notice_confirm', (300, 1150, 480, 220))
-        if score >= 0.8:
-            self.controller.tap(*pos, seconds=1)
+        end = time.time() + 3
+        while time.time() < end:
+            _, gray = self._shot()
+            score, pos = self._score(gray, 'labels/misty/notice_confirm', (300, 1150, 480, 220))
+            if score >= 0.8:
+                self.controller.tap(*pos, seconds=1)
+                return
+            time.sleep(0.3)
+        # No notice: the formation was already empty
 
-    def _set_filter(self, faction: str, cls: str) -> None:
-        # Faction first, then class (picking a faction can reset the class)
+    def _set_filter(self, faction: str, cls: str) -> bool:
+        """Faction first, then class. Never taps the class row unless the panel is open."""
+        if not self._ensure_panel_expanded():
+            return False
         self.controller.tap(FACTION_X[faction], FACTION_Y, seconds=0.6)
+        if not self._panel_expanded():
+            return False
         self.controller.tap(CLASS_X[cls], CLASS_Y, seconds=0.8)
+        return True
 
     def _cards(self) -> List[Tuple[int, bool]]:
         """Top-row hero cards as (x, already placed), left to right"""
@@ -471,10 +494,13 @@ class MistyValleyActivities(BaseActivity):
         return cards
 
     def _place(self, x: int) -> bool:
-        for _ in range(2):
-            self.controller.tap(x, CARD_Y, seconds=0.8)
+        """Tap a top-row card once (a second tap would take the hero out again)"""
+        self.controller.tap(x, CARD_Y, seconds=0.5)
+        end = time.time() + 2
+        while time.time() < end:
             if any(cx == x and checked for cx, checked in self._cards()):
                 return True
+            time.sleep(0.3)
         return False
 
     def build_team(self, plan: List[Slot]) -> bool:
@@ -485,11 +511,16 @@ class MistyValleyActivities(BaseActivity):
             return False
         used: List[str] = []
         for i, slot in enumerate(plan):
+            if len(used) >= 5:
+                break
             factions = [f for f in slot.factions if not (slot.distinct and f in used)]
             placed = False
             for faction in factions:
                 for cls in slot.classes:
-                    self._set_filter(faction, cls)
+                    if not self._set_filter(faction, cls):
+                        logger.warning("    Filter panel not found")
+                        return False
+                    # Strongest first: top row, left to right, skipping heroes already placed
                     free = [x for x, checked in self._cards() if not checked]
                     if free and self._place(free[0]):
                         used.append(faction)
