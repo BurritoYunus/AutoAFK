@@ -45,6 +45,7 @@ a = Analysis(
         'src.activities.labyrinth_activities',
         'src.activities.campaign_activities',
         'src.activities.misty_valley',
+        'src.activities.shadow_realm',
         'src.core.ocr',
         'onnxruntime',
     ] + ocr_hidden,

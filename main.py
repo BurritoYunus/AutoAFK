@@ -4,6 +4,9 @@ Uses new modular backend with full functionality
 """
 import os
 import sys
+
+# Text recognition (onnxruntime): never send usage data to Microsoft
+os.environ.setdefault('ORT_DISABLE_TELEMETRY', '1')
 import threading
 import datetime
 import logging
@@ -324,7 +327,8 @@ class App(ctk.CTk):
                 "Battle of Blood",
                 "Heroes of Esperia",
                 "Guild Hunts",
-                "Misty Valley"
+                "Misty Valley",
+                "Shadow Realm"
             ],
             width=160,
             command=self._on_activity_selected
@@ -671,7 +675,8 @@ class App(ctk.CTk):
     ACTIVITY_HINTS = {
         "Arcane Labyrinth": "Clears the whole labyrinth",
         "Guild Hunts": "Runs today's hunts",
-        "Misty Valley": "Clears up to stage 20",
+        "Misty Valley": "Clears all open stages",
+        "Shadow Realm": "Uses all team attempts",
     }
 
     def _on_activity_selected(self, activity: str) -> None:
@@ -740,6 +745,8 @@ class App(ctk.CTk):
                 activity_mgr.guild.handle_guild_hunts()
             elif activity == "Misty Valley":
                 result = activity_mgr.misty.run(self.activity_stop_event, self.activity_pause_event)
+            elif activity == "Shadow Realm":
+                result = activity_mgr.shadow.run(self.activity_stop_event, self.activity_pause_event)
 
             if self.activity_stop_event.is_set():
                 logger.warning("Activity stopped")
@@ -1276,6 +1283,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('-t', '--tower',
                        type=str,
                        help='Select a specific tower to push (kt, lb, m, w, gb, c, h)')
+    parser.add_argument('-sr', '--shadowrealm',
+                       action='store_true',
+                       help='Run Shadow Realm without GUI (for scheduling)')
     parser.add_argument('-l', '--logging', 
                        action='store_true',
                        help='Enable file logging')
@@ -1290,6 +1300,8 @@ def main() -> None:
     # If --dailies flag, run headless
     if args.dailies:
         run_dailies_headless()
+    elif args.shadowrealm:
+        run_shadow_realm_headless()
     # If --tower or --autotower flag, run tower push
     elif args.tower or args.autotower:
         run_tower_push_headless()
@@ -1346,6 +1358,41 @@ def run_dailies_headless() -> None:
         # Cleanup ADB processes
         if 'device_manager' in locals() and device_manager:
             print()  # Empty line without timestamp
+            print("[INFO] Cleaning up ADB processes...")
+            device_manager.disconnect()
+            device_manager._kill_adb_processes()
+
+
+def run_shadow_realm_headless() -> None:
+    """Run Shadow Realm without GUI (e.g. from Task Scheduler)"""
+    print(f"AutoAFK {VERSION} - Shadow Realm")
+    print(f"https://github.com/{GITHUB_REPO}")
+    print()
+    device_manager = None
+    try:
+        config = Config(args.config if args.config else 'settings.ini')
+        from src.utils.logger import Logger, add_notification_handler
+        Logger()
+        notification_manager = NotificationManager(config)
+        add_notification_handler(notification_manager)
+        device_manager, image_recognition, game_controller = initialize_core_modules(config)
+        if not device_manager:
+            print("[ERROR] Failed to connect to device")
+            return
+        activity_manager = ActivityManager(
+            device_manager, image_recognition, game_controller,
+            config, notification_manager
+        )
+        game_controller.expand_menus()
+        game_controller.wait_until_game_active()
+        activity_manager.shadow.run()
+    except Exception as e:
+        print(f"[ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        if device_manager:
+            print()
             print("[INFO] Cleaning up ADB processes...")
             device_manager.disconnect()
             device_manager._kill_adb_processes()

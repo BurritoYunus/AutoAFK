@@ -4,6 +4,7 @@ Uses RapidOCR (ONNX models bundled with the package, works offline). If it isn't
 installed, read functions return None and callers fall back to image templates.
 """
 import logging
+import os
 import threading
 from typing import List, Optional, Tuple
 
@@ -22,9 +23,12 @@ def _get_engine():
         with _lock:
             if _engine is None and not _failed:
                 try:
+                    # No usage data to Microsoft: the environment switch is what actually
+                    # stops the connections (disable_telemetry_events alone doesn't)
+                    os.environ['ORT_DISABLE_TELEMETRY'] = '1'
                     try:
                         import onnxruntime
-                        onnxruntime.disable_telemetry_events()   # no usage data sent to Microsoft
+                        onnxruntime.disable_telemetry_events()
                     except Exception:
                         pass
                     from rapidocr_onnxruntime import RapidOCR
