@@ -405,6 +405,9 @@ class App(ctk.CTk):
         self.textbox.tag_config('purple', foreground="#A855F7")     # Purple
         self.textbox.tag_config('yellow', foreground="#F59E0B")     # Amber
         self.textbox.tag_config('orange', foreground="#F97316")     # Orange
+        self.textbox.tag_config('dim', foreground="#9CA3AF")        # Grey (less important lines)
+        self.textbox.tag_config('silver', foreground="#CBD5E1")     # Silver
+        self.textbox.tag_config('gold', foreground="#FBBF24")       # Gold
         
         # Configure clickable link tags
         self.textbox.tag_config('link', foreground="#3B82F6", underline=True)
@@ -485,8 +488,12 @@ class App(ctk.CTk):
                     # Import custom levels
                     from src.utils.logger import BLUE, GREEN, PURPLE
                     
+                    # A colour picked by the caller (extra={'tag': ...}) wins
+                    tag = getattr(record, 'tag', None)
+                    if tag:
+                        self.app.textbox.insert('end', timestamp + msg + '\n', tag)
                     # Color based on level - check custom levels first
-                    if record.levelno == GREEN:
+                    elif record.levelno == GREEN:
                         self.app.textbox.insert('end', timestamp + msg + '\n', 'green')
                     elif record.levelno == BLUE:
                         self.app.textbox.insert('end', timestamp + msg + '\n', 'blue')
