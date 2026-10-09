@@ -31,6 +31,11 @@ from src.core import ocr
 
 logger = logging.getLogger(__name__)
 
+
+def _say(text: str, tag: Optional[str] = None, level: int = logging.INFO) -> None:
+    """Log a line in a given colour of the app's log box (grey, silver, gold, green, ...)"""
+    logger.log(level, text, extra={'tag': tag} if tag else None)
+
 # ---------------------------------------------------------------------------
 # Game data and screen layout (1080x1920)
 # ---------------------------------------------------------------------------
@@ -748,7 +753,7 @@ class MistyValleyActivities(BaseActivity):
         return None
 
     def _run_battle(self, info: StageInfo, mem: StageMemory, plan: BattlePlan) -> None:
-        logger.purple(f"    Stage {info.number}: battle for {plan.label}")
+        _say(f"    ⚔ Battle: {plan.label}", 'purple')
         self.controller.tap(*STAGE_BATTLE, seconds=2)
         # The game shows a cloud transition before the formation screen
         if not self._wait_for('labels/misty/formation_remove', timeout=15, region=(960, 1040, 120, 130)):
@@ -763,10 +768,10 @@ class MistyValleyActivities(BaseActivity):
         if not built:
             if plan.covers_silver:
                 mem.silver_impossible = True
-                logger.warning(f"    Not enough heroes for the Silver challenge on stage {info.number}")
+                _say(f"    ↷ Not enough heroes for Silver ({info.silver.describe()}), skipping it", 'orange')
             if plan.covers_gold:
                 mem.gold_impossible = True
-                logger.warning(f"    Not enough heroes for the Gold challenge on stage {info.number}")
+                _say(f"    ↷ Not enough heroes for Gold ({info.gold.describe()}), skipping it", 'orange')
             if plan.fallback_any:
                 built = self.build_team(any_plan())
         if not built:
@@ -775,20 +780,20 @@ class MistyValleyActivities(BaseActivity):
         mem.attempts += 1
         result = self._fight()
         if result is True:
-            logger.green(f"    Stage {info.number}: victory")
+            _say("    ✔ Victory", 'green')
         elif result is False:
             mem.defeats += 1
-            logger.warning(f"    Stage {info.number}: defeat")
+            _say("    ✖ Defeat", 'orange')
             # That team was too weak: drop the challenge it was built for, so the
             # next battle uses the 5 strongest heroes and at least wins the stage
             if plan.covers_silver and not mem.silver_impossible:
                 mem.silver_impossible = True
-                logger.warning(f"    Giving up the Silver challenge on stage {info.number}")
+                _say(f"    ↷ Skipping Silver ({info.silver.describe()}); next try uses the strongest team", 'orange')
             if plan.covers_gold and not mem.gold_impossible:
                 mem.gold_impossible = True
-                logger.warning(f"    Giving up the Gold challenge on stage {info.number}")
+                _say(f"    ↷ Skipping Gold ({info.gold.describe()}); next try uses the strongest team", 'orange')
         else:
-            logger.warning(f"    Stage {info.number}: battle result not found")
+            logger.warning("    Battle result not found")
             self.controller.recover(silent=True)
         # Back to the map, through the cloud transition again
         self._wait_for('labels/misty/map_title', timeout=15, region=(300, 20, 480, 100))
@@ -797,12 +802,16 @@ class MistyValleyActivities(BaseActivity):
     # -- main loop ---------------------------------------------------------
 
     def _log_stage(self, info: StageInfo) -> None:
+        """Header for a stage with its two challenges"""
         def show(req, done):
             if done:
-                return 'done'
-            return req.describe() if req else 'not read'
-        logger.info(f"    Stage {info.number}: {show(info.silver, info.silver_done)} | "
-                    f"{show(info.gold, info.gold_done)}")
+                return '✔ done'
+            if req is None:
+                return "couldn't read"
+            return req.describe()
+        _say(f"━━ Stage {info.number} " + '━' * 24, 'blue')
+        _say(f"    Silver: {show(info.silver, info.silver_done)}", 'silver')
+        _say(f"    Gold: {show(info.gold, info.gold_done)}", 'gold')
 
     def _nudge_for_stage(self) -> bool:
         """Drag the map a little in each direction until a stage shows up"""
@@ -817,9 +826,39 @@ class MistyValleyActivities(BaseActivity):
         return False
 
     def run(self, stop_event=None, pause_event=None) -> bool:
-        """Clear Misty Valley up to the last stage"""
+        """Clear Misty Valley up to the last stage, then go back to the campaign screen"""
         self._stop_event, self._pause_event = stop_event, pause_event
+        self._cleared: List[Tuple[int, bool, bool]] = []   # (stage, silver done, gold done)
         logger.blue("Running Misty Valley")
+        result = False
+        try:
+            result = self._run()
+        finally:
+            if not self._stopped():
+                self._log_summary()
+                self.controller.recover(silent=True)   # back to the campaign screen
+        return result
+
+    def _log_summary(self) -> None:
+        if not self._cleared:
+            return
+        n = len(self._cleared)
+        silver = sum(s for _, s, _ in self._cleared)
+        gold = sum(g for _, _, g in self._cleared)
+        _say("━━ Misty Valley summary " + '━' * 17, 'blue')
+        _say(f"    Cleared {n} stage{'s' if n != 1 else ''} this run "
+             f"(stages {self._cleared[0][0]}–{self._cleared[-1][0]})", 'green')
+        _say(f"    Silver: {silver}/{n}", 'silver')
+        _say(f"    Gold: {gold}/{n}", 'gold')
+
+    def _read_timer(self) -> Optional[str]:
+        from PIL import Image
+        bgr, _ = self._shot()
+        text = ocr.read_line(Image.fromarray(cv2.cvtColor(bgr[1452:1500, 430:700], cv2.COLOR_BGR2RGB)))
+        m = re.search(r'(\d+)\D+(\d+)\D+(\d+)', text or '')
+        return f"{int(m.group(1))}h {int(m.group(2))}m" if m else None
+
+    def _run(self) -> bool:
         if not self.enter():
             return False
         if self._stopped():
@@ -857,20 +896,27 @@ class MistyValleyActivities(BaseActivity):
                     self._close_stage()
                     continue
                 if info.timer:
-                    logger.info(f"    Stage {n} isn't open yet, Misty Valley done for now")
+                    when = self._read_timer()
+                    _say(f"⏳ Stage {n} opens in {when}" if when else f"⏳ Stage {n} isn't open yet", 'blue')
+                    _say("    Nothing more to do for now", 'dim')
                     self._close_stage()
                     return True
                 mem = memory.setdefault(n, StageMemory())
+                plan = next_battle(info, mem)
                 if not mem.logged:
                     mem.logged = True
-                    self._log_stage(info)
-                plan = next_battle(info, mem)
+                    if plan is None and info.stone_done and not mem.attempts:
+                        _say(f"Stage {n}  ✔ already complete", 'dim')
+                    else:
+                        self._log_stage(info)
                 if plan is None:
                     if not info.stone_done:
                         logger.error(f"    Couldn't win stage {n}, stopping")
                         self._close_stage()
                         return False
-                    logger.green(f"    Stage {n} done")
+                    if mem.attempts:
+                        _say(f"    ★ Stage {n} complete", 'green')
+                        self._cleared.append((n, info.silver_done, info.gold_done))
                     finished.add(n)
                     self._close_stage()
                     continue
@@ -898,7 +944,7 @@ class MistyValleyActivities(BaseActivity):
                     scrolls = 0
                     continue
             if scrolls >= 6 or not self._scroll_up():
-                logger.green("Reached the top of the map, Misty Valley done")
+                _say("✔ Reached the last stage", 'green')
                 return True
             scrolls += 1
 
