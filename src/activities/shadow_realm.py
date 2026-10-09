@@ -30,6 +30,7 @@ CLOSE_POPUP = (540, 40)            # tap here to close the rewards popup
 TEAM_BATTLE = (540, 1828)
 TOWER_DRAG = ((540, 1450), (540, 750))   # drag up = show lower floors
 
+SETTLE = 1.5                       # seconds to let a screen finish animating before acting
 MAX_BATTLES = 40                   # safety limit for one run
 BATTLE_TIMEOUT = 150               # seconds to wait for a battle result
 
@@ -75,7 +76,8 @@ class ShadowRealmActivities(BaseActivity):
             return 'tower'
         if self._find(texts, 'taptocontinue'):
             return 'result'
-        if self._find(texts, 'battle', (300, 1750, 780, 1900)) and self._find(texts, 'vs', (400, 0, 680, 120)):
+        if self._find(texts, 'battle', (300, 1750, 780, 1900)) and (
+                self._find(texts, 'vs', (400, 0, 680, 120)) or self._find(texts, 'alignment', (700, 1800, 1000, 1920))):
             return 'teams'
         if self._find(texts, 'realmofshadows', (0, 400, 1080, 650)):
             return 'popup'
@@ -83,10 +85,16 @@ class ShadowRealmActivities(BaseActivity):
             return 'gf_map'
         if self._find(texts, 'begin', (300, 1600, 800, 1730)):
             return 'campaign'
+        if self._find(texts, 'leaderboard', (0, 0, 1080, 160)):
+            return 'other'
         return 'unknown'
 
+    def _settle(self, seconds: float = SETTLE) -> None:
+        """Give the game time to finish a transition or animation"""
+        self.wait(seconds)
+
     def _wait_screen(self, wanted, timeout: float):
-        """Wait until one of the wanted screens shows; returns (screen, texts)"""
+        """Wait until one of the wanted screens shows and has settled; returns (screen, texts)"""
         end = time.time() + timeout
         texts, screen = [], 'unknown'
         while time.time() < end:
@@ -95,8 +103,13 @@ class ShadowRealmActivities(BaseActivity):
             texts = self._read()
             screen = self._screen(texts)
             if screen in wanted:
-                return screen, texts
-            time.sleep(0.8)
+                self._settle()
+                texts = self._read()            # fresh read once the animation is done
+                again = self._screen(texts)
+                if again == screen:
+                    return screen, texts
+                screen = again
+            time.sleep(1)
         return screen, texts
 
     # -- entering ----------------------------------------------------------
@@ -107,22 +120,29 @@ class ShadowRealmActivities(BaseActivity):
             logger.info("    Opening Shadow Realm")
             self.controller.confirm_location('campaign')
             self.controller.expand_menus()
-        end = time.time() + 60
+        end = time.time() + 75
+        unknown = 0
         while time.time() < end:
             if self._stopped():
                 return False
             texts = self._read()
             screen = self._screen(texts)
+            if screen not in ('unknown', 'tower'):
+                # Let the screen finish sliding in before tapping anything on it
+                self._settle()
+                texts = self._read()
+                if self._screen(texts) != screen:
+                    continue
             if screen == 'tower':
                 self._read_highest(texts)
                 return True
             if screen == 'popup':
                 self._read_highest(texts)
                 if not self.image.click_image('labels/shadow/popup_go', confidence=0.8, seconds=3, suppress=True):
-                    self.controller.tap(*GO_BUTTON, seconds=3)
+                    self.controller.tap(*GO_BUTTON, seconds=4)
             elif screen == 'gf_map':
                 # The shortcut on the left moves the camera to the realm and opens it
-                if not self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.8, seconds=2,
+                if not self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.8, seconds=3,
                                               suppress=True, region=(0, 1150, 260, 400)):
                     enter = self._find(texts, 'enter')
                     if enter:
@@ -135,7 +155,14 @@ class ShadowRealmActivities(BaseActivity):
                     gf = self._find(texts, 'golden', (0, 600, 260, 900))
                     if gf:
                         self.controller.tap(gf[0][0], gf[0][1], seconds=4)
+            elif screen == 'other':
+                # Opened something else by mistake (e.g. a leaderboard): go back
+                logger.debug("    Unexpected screen, going back")
+                self.controller.tap(55, 1830, seconds=2)
             else:
+                unknown += 1
+                if unknown % 8 == 0:
+                    self.controller.tap(55, 1830, seconds=2)   # stuck on an unknown screen: back
                 time.sleep(1)
         if not self._stopped():
             logger.error("    Shadow Realm not found")
@@ -187,8 +214,8 @@ class ShadowRealmActivities(BaseActivity):
     def _collect_rewards(self, texts) -> int:
         receives = self._find(texts, 'receive', (0, 250, 1080, 1700))
         for x, y in receives:
-            self.controller.tap(x, y, seconds=1.5)
-            self.controller.tap(*CLOSE_POPUP, seconds=1)   # close the rewards popup
+            self.controller.tap(x, y, seconds=2)
+            self.controller.tap(*CLOSE_POPUP, seconds=1.5)   # close the rewards popup
         if receives:
             _say(f"    🎁 Collected {len(receives)} reward{'s' if len(receives) > 1 else ''}", 'green')
         return len(receives)
@@ -225,7 +252,7 @@ class ShadowRealmActivities(BaseActivity):
             ready = [t for t in teams if t[0] > 0]
             if ready:
                 attempts, _, row_y = max(ready, key=lambda t: t[0])
-                self.controller.tap(600, row_y, seconds=1)   # tapping the row selects the team
+                self.controller.tap(600, row_y, seconds=1.5)   # tapping the row selects the team
                 return attempts
             if self._find(texts, 'afterqueueexpansion') or not teams:
                 return None   # end of the list (locked slot showing)
@@ -237,7 +264,7 @@ class ShadowRealmActivities(BaseActivity):
     def _battle(self, x: int, y: int, floor: Optional[int]) -> str:
         """Fight one node. Returns 'won', 'no_attempts', 'running' or 'failed'."""
         self.controller.tap(x, y, seconds=2)
-        screen, texts = self._wait_screen({'teams', 'tower'}, timeout=15)
+        screen, texts = self._wait_screen({'teams'}, timeout=25)
         if screen != 'teams':
             return 'failed'
         attempts = self._pick_team()
@@ -256,13 +283,14 @@ class ShadowRealmActivities(BaseActivity):
         if screen not in ('result', 'tower'):
             screen, texts = self._wait_screen({'result', 'tower'}, timeout=BATTLE_TIMEOUT)
         if screen == 'result':
-            won = bool(self._find(texts, 'vi', (0, 600, 1080, 1100)))   # VICTORY (OCR sometimes misreads it)
+            # The VICTORY banner animates in; only a clearly read DEFEAT counts as a loss
+            lost = bool(self._find(texts, 'defeat'))
             self.controller.tap(540, 1800, seconds=2)
             self._wait_screen({'tower'}, timeout=20)
-            if won:
-                _say("    ✔ Victory", 'green')
+            if lost:
+                _say("    ✖ Defeat", 'orange')
             else:
-                _say("    ✖ Not won", 'orange')
+                _say("    ✔ Victory", 'green')
             return 'won'
         if screen == 'tower':
             # Later floors finish the battle in the background, with a timer on the node
