@@ -69,3 +69,22 @@ def read_lines(image) -> Optional[List[Tuple[int, str]]]:
     lines = [(int(min(p[1] for p in box)), int(min(p[0] for p in box)), text) for box, text, _ in result]
     lines.sort(key=lambda l: (l[0] // 20, l[1]))
     return [(y, text) for y, _, text in lines]
+
+
+def read_boxes(image) -> Optional[List[Tuple[int, int, int, int, str]]]:
+    """All text in an image as (centre x, centre y, width, height, text)"""
+    engine = _get_engine()
+    if engine is None:
+        return None
+    try:
+        result, _ = engine(np.asarray(image.convert('RGB')), use_cls=False)
+    except Exception as e:
+        logger.debug(f"OCR error: {e}")
+        return None
+    boxes = []
+    for box, text, _ in result or []:
+        xs = [p[0] for p in box]
+        ys = [p[1] for p in box]
+        boxes.append((int(sum(xs) / 4), int(sum(ys) / 4), int(max(xs) - min(xs)), int(max(ys) - min(ys)), text))
+    boxes.sort(key=lambda b: (b[1], b[0]))
+    return boxes
