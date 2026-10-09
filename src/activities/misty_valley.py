@@ -1,23 +1,24 @@
 """Misty Valley event
 
-Clears the Misty Valley stages from wherever the map opens, up to stage 20.
+Clears the Misty Valley stages from wherever the map opens, up to the top of the map.
 
-For every stage it reads the Silver and Gold challenges from the stage window
+For every stage it reads the challenges from the stage window with text
+recognition, so new challenges each month are understood without code changes,
 and builds a team with the in-game faction and class filters, always taking the
 strongest heroes (top-left first):
 
-* Silver is always "Win with 4 <faction> heroes".
-* Gold challenges that only need a win (time limits, no deaths, ultimates)
-  are done by any win.
-* Team-shape Gold challenges (5 factions, frontline Tank, backline Ranger,
-  same class, no Ranger/Mage, no Tank/Mage) are combined with Silver in one
-  team when possible, otherwise done in a separate battle.
+* "Win with N <faction(s)> heroes", "N different factions", "Frontline/Backline
+  must be <class>", "same class" and "without any <class>" are turned into team
+  rules. Rules from the Silver and Gold challenges are combined into one team when
+  possible, otherwise they get separate battles.
+* Anything else (time limits, no deaths, ultimates) only needs a win.
 * "Victorious Team Contains" (specific heroes) is skipped.
 
-The run stops after stage 20, or at a stage that shows an "Opens:" timer.
+The run stops at the top of the map, or at a stage that shows an "Opens:" timer.
 """
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -26,6 +27,7 @@ import cv2
 import numpy as np
 
 from src.activities.base_activity import BaseActivity
+from src.core import ocr
 
 logger = logging.getLogger(__name__)
 
@@ -38,23 +40,6 @@ FACTIONS = ['lightbearer', 'mauler', 'wilder', 'graveborn',
 CLASSES = ['warrior', 'tank', 'ranger', 'mage', 'support']
 ALL = 'all'
 
-SILVER_GROUPS = {
-    'lightbearer': ['lightbearer'],
-    'mauler': ['mauler'],
-    'wilder': ['wilder'],
-    'graveborn': ['graveborn'],
-    'chd': ['celestial', 'hypogean', 'dimensional'],
-}
-
-# Gold challenges that need a particular team shape
-CONSTRAINT_GOLDS = {'factions5', 'frontline_tank', 'backline_ranger', 'same_class',
-                    'no_ranger_mage', 'no_tank_mage'}
-# Gold challenges any win completes (the team is strong enough)
-WIN_GOLDS = {'ultimate', 'defeat_within', 'no_dying', 'win_within', 'unknown'}
-# Gold challenges the bot can't do
-SKIP_GOLDS = {'victorious'}
-
-LAST_STAGE = 20
 MAX_ATTEMPTS_PER_STAGE = 4
 MAX_DEFEATS_PER_STAGE = 2
 
@@ -79,6 +64,106 @@ STAMP_ROWS = {'stone': (540, 740), 'silver': (760, 965), 'gold': (980, 1185)}
 # Map
 HUT_TAP_OFFSET = (0, 0)
 MAP_TOP, MAP_BOTTOM = 230, 1700
+MAP_BACK = (55, 1815)
+
+
+# ---------------------------------------------------------------------------
+# Reading challenges (pure logic, no screen access)
+# ---------------------------------------------------------------------------
+
+FACTION_NAMES = {'lightbearer': 'Lightbearer', 'mauler': 'Mauler', 'wilder': 'Wilder',
+                 'graveborn': 'Graveborn', 'celestial': 'Celestial', 'hypogean': 'Hypogean',
+                 'dimensional': 'Dimensional', 'draconis': 'Draconis'}
+# OCR sometimes cuts words short (e.g. under a COMPLETED stamp), so match on prefixes
+FACTION_KEYS = {'lightb': 'lightbearer', 'mauler': 'mauler', 'wilder': 'wilder', 'graveb': 'graveborn',
+                'celest': 'celestial', 'hypoge': 'hypogean', 'dimens': 'dimensional', 'dracon': 'draconis'}
+
+
+def _norm(text: str) -> str:
+    return re.sub(r'[^a-z0-9/]', '', text.lower())
+
+
+def _classes_in(t: str) -> List[str]:
+    return [c for c in CLASSES if c in t]
+
+
+def _factions_in(t: str) -> List[str]:
+    found = []
+    for key, faction in FACTION_KEYS.items():
+        i = t.find(key)
+        if i >= 0:
+            found.append((i, faction))
+    return [f for _, f in sorted(found)]
+
+
+@dataclass(frozen=True)
+class Requirement:
+    """What one challenge asks of the team"""
+    text: str = ''
+    groups: Tuple[Tuple[Tuple[str, ...], int], ...] = ()   # (factions, how many heroes)
+    distinct: int = 0                                       # N different factions
+    front: Optional[frozenset] = None                       # classes allowed in the frontline
+    back: Optional[frozenset] = None                        # classes allowed in the backline
+    exclude: frozenset = frozenset()                        # classes not allowed
+    same_class: bool = False
+    skip: bool = False                                      # can't be automated (specific heroes)
+
+    @property
+    def shaped(self) -> bool:
+        """True if the team has to be built a particular way"""
+        return bool(self.groups or self.distinct or self.front or self.back
+                    or self.exclude or self.same_class)
+
+    def describe(self) -> str:
+        if self.skip:
+            return 'specific heroes (skipped)'
+        parts = []
+        for factions, n in self.groups:
+            parts.append(f"{n} {'/'.join(FACTION_NAMES[f] for f in factions)}")
+        if self.distinct:
+            parts.append(f'{self.distinct} different factions')
+        if self.front:
+            parts.append('Frontline ' + '/'.join(c.title() for c in CLASSES if c in self.front))
+        if self.back:
+            parts.append('Backline ' + '/'.join(c.title() for c in CLASSES if c in self.back))
+        if self.exclude:
+            parts.append('no ' + '/'.join(c.title() for c in CLASSES if c in self.exclude))
+        if self.same_class:
+            parts.append('all the same class')
+        if parts:
+            return ', '.join(parts)
+        return ' '.join(self.text.split()) or 'win the battle'
+
+
+def parse_challenge(text: Optional[str]) -> Optional[Requirement]:
+    """Turn a challenge text into a Requirement. None if there's no text."""
+    if not text or not text.strip():
+        return None
+    t = _norm(text)
+    if 'victorious' in t or 'contains' in t:
+        return Requirement(text=text, skip=True)
+    groups, distinct, front, back, exclude, same = [], 0, None, None, frozenset(), False
+    m = re.search(r'(\d)differentfaction', t)
+    if m or 'differentfaction' in t:
+        distinct = int(m.group(1)) if m else 5
+    else:
+        m = re.search(r'with(\d)(.*?)hero', t)
+        if m:
+            factions = _factions_in(m.group(2))
+            if factions:
+                groups.append((tuple(factions), int(m.group(1))))
+    if 'frontline' in t:
+        cls = _classes_in(t[t.index('frontline'):])
+        front = frozenset(cls) if cls else None
+    if 'backline' in t:
+        cls = _classes_in(t[t.index('backline'):])
+        back = frozenset(cls) if cls else None
+    if 'without' in t:
+        exclude = frozenset(_classes_in(t[t.index('without'):]))
+    if 'sameclass' in t:
+        same = True
+    return Requirement(text=text, groups=tuple(groups), distinct=distinct, front=front,
+                       back=back, exclude=exclude, same_class=same)
 
 
 # ---------------------------------------------------------------------------
@@ -93,58 +178,72 @@ class Slot:
     distinct: bool = False   # pick a faction not used yet in this team
 
 
-def _slots(n, factions, classes=(ALL,)):
-    return [Slot(tuple(factions), tuple(classes))] * n
-
-
-def silver_plan(group: str) -> List[Slot]:
-    """4 heroes of the group + the strongest hero of another faction"""
-    g = SILVER_GROUPS[group]
-    other = [f for f in FACTIONS if f not in g]
-    return _slots(4, g) + _slots(1, other + g)
-
-
 def any_plan() -> List[Slot]:
-    return _slots(5, [ALL])
+    """The 5 strongest heroes"""
+    return [Slot((ALL,))] * 5
 
 
-def gold_plans(kind: str) -> List[List[Slot]]:
-    """Plans for a Gold challenge on its own"""
-    non_ranger = ['warrior', 'tank', 'mage', 'support']
-    if kind == 'factions5':
-        return [[Slot(tuple(FACTIONS), (ALL,), distinct=True)] * 5]
-    if kind == 'frontline_tank':
-        return [_slots(2, [ALL], ['tank']) + _slots(3, [ALL])]
-    if kind == 'backline_ranger':
-        return [_slots(2, [ALL], non_ranger + ['ranger']) + _slots(3, [ALL], ['ranger'])]
-    if kind == 'same_class':
-        return [_slots(5, [ALL], [c]) for c in CLASSES]
-    if kind == 'no_ranger_mage':
-        return [_slots(5, [ALL], ['warrior', 'tank', 'support'])]
-    if kind == 'no_tank_mage':
-        return [_slots(5, [ALL], ['warrior', 'ranger', 'support'])]
-    return []
+def build_plans(reqs: List[Requirement]) -> List[List[Slot]]:
+    """Team plans that meet all the requirements at once (empty if they can't be combined).
 
+    Heroes are placed in order: the first 2 are the frontline, the last 3 the backline.
+    """
+    groups = [g for r in reqs for g in r.groups]
+    distinct = max((r.distinct for r in reqs), default=0)
+    if distinct and groups:
+        return []          # "N of one faction" and "N different factions" don't mix
+    if sum(n for _, n in groups) > 5:
+        return []
+    every = set(CLASSES)
+    allowed = [set(every) for _ in range(5)]
+    for r in reqs:
+        for i in range(5):
+            allowed[i] -= r.exclude
+        if r.front:
+            for i in (0, 1):
+                allowed[i] &= r.front
+        if r.back:
+            for i in (2, 3, 4):
+                allowed[i] &= r.back
+    variants = [allowed]
+    if any(r.same_class for r in reqs):
+        variants = [[a & {c} for a in allowed] for c in CLASSES]
 
-def combined_plans(group: str, kind: str) -> List[List[Slot]]:
-    """Plans that satisfy Silver and a team-shape Gold in one battle"""
-    g = SILVER_GROUPS[group]
-    other = [f for f in FACTIONS if f not in g]
-    non_ranger = ['warrior', 'tank', 'mage', 'support']
-    if kind == 'frontline_tank':
-        return [_slots(2, g, ['tank']) + _slots(2, g) + _slots(1, other)]
-    if kind == 'backline_ranger':
-        # Front can be anything; prefer non-Rangers there so Rangers are left for the back
-        return [_slots(2, g, non_ranger + ['ranger']) + _slots(2, g, ['ranger']) + _slots(1, other, ['ranger'])]
-    if kind == 'same_class':
-        return [_slots(4, g, [c]) + _slots(1, other, [c]) for c in CLASSES]
-    if kind == 'no_ranger_mage':
-        allowed = ['warrior', 'tank', 'support']
-        return [_slots(4, g, allowed) + _slots(1, other, allowed)]
-    if kind == 'no_tank_mage':
-        allowed = ['warrior', 'ranger', 'support']
-        return [_slots(4, g, allowed) + _slots(1, other, allowed)]
-    return []   # factions5 can't be combined with "4 of one faction"
+    plans: List[List[Slot]] = []
+    for al in variants:
+        if any(not a for a in al):
+            continue
+        cls = []
+        for i, a in enumerate(al):
+            if a != every:
+                cls.append(tuple(c for c in CLASSES if c in a))
+                continue
+            # Free position: if later positions need certain classes, use other classes
+            # first so those heroes are still available when their turn comes
+            later = set().union(*[b for b in al[i + 1:] if b != every]) if i < 4 else set()
+            if later and later != every:
+                cls.append(tuple([c for c in CLASSES if c not in later] + [c for c in CLASSES if c in later]))
+            else:
+                cls.append((ALL,))
+        orders = [list(range(5))]
+        if groups:
+            orders.append(list(range(4, -1, -1)))   # also try the group in the backline
+        for order in orders:
+            fac: List[Optional[Tuple[str, ...]]] = [None] * 5
+            k = 0
+            for factions, n in groups:
+                for _ in range(n):
+                    fac[order[k]] = factions
+                    k += 1
+            plan = []
+            for i in range(5):
+                if distinct:
+                    plan.append(Slot(tuple(FACTIONS), cls[i], distinct=True))
+                else:
+                    plan.append(Slot(fac[i] or (ALL,), cls[i]))
+            if plan not in plans:
+                plans.append(plan)
+    return plans
 
 
 @dataclass
@@ -153,8 +252,8 @@ class StageInfo:
     stone_done: bool
     silver_done: bool
     gold_done: bool
-    silver_kind: Optional[str]
-    gold_kind: Optional[str]
+    silver: Optional[Requirement]
+    gold: Optional[Requirement]
     timer: bool
     playable: bool
 
@@ -165,6 +264,7 @@ class StageMemory:
     defeats: int = 0
     silver_impossible: bool = False
     gold_impossible: bool = False
+    logged: bool = False
 
 
 @dataclass
@@ -179,31 +279,29 @@ class BattlePlan:
 
 def next_battle(info: StageInfo, mem: StageMemory) -> Optional[BattlePlan]:
     """Decide the next battle for a stage, or None if it's finished"""
-    silver_needed = (not info.silver_done and info.silver_kind in SILVER_GROUPS
-                     and not mem.silver_impossible)
-    gold_needed = not info.gold_done and info.gold_kind not in SKIP_GOLDS
-    gold_constraint = gold_needed and info.gold_kind in CONSTRAINT_GOLDS and not mem.gold_impossible
-    gold_win = gold_needed and (info.gold_kind in WIN_GOLDS or info.gold_kind is None)
+    s, g = info.silver, info.gold
+    silver_needed = bool(not info.silver_done and s and not s.skip and not mem.silver_impossible)
+    gold_needed = bool(not info.gold_done and g and not g.skip and not mem.gold_impossible)
+    s_shape, g_shape = silver_needed and s.shaped, gold_needed and g.shaped
+    s_win, g_win = silver_needed and not s.shaped, gold_needed and not g.shaped
     stone_needed = not info.stone_done
 
-    if not (silver_needed or gold_constraint or gold_win or stone_needed):
+    if not (s_shape or g_shape or s_win or g_win or stone_needed):
         return None
     if mem.attempts >= MAX_ATTEMPTS_PER_STAGE or mem.defeats >= MAX_DEFEATS_PER_STAGE:
         return None
 
-    if silver_needed and gold_constraint:
-        plans = combined_plans(info.silver_kind, info.gold_kind) + [silver_plan(info.silver_kind)]
-        return BattlePlan('Silver + Gold', plans, covers_silver=True, fallback_any=stone_needed)
-    if silver_needed:
-        return BattlePlan('Silver', [silver_plan(info.silver_kind)], covers_silver=True,
+    if s_shape and g_shape:
+        plans = build_plans([s, g]) + build_plans([s])
+        return BattlePlan(f'{s.describe()} + {g.describe()}', plans, covers_silver=True,
                           fallback_any=stone_needed)
-    if gold_constraint:
-        return BattlePlan('Gold', gold_plans(info.gold_kind), covers_gold=True,
-                          fallback_any=stone_needed)
-    # Only a plain win is left (Stone and/or a win-type Gold).
-    # After a defeat, go straight to the 5 strongest heroes.
-    plans = [silver_plan(info.silver_kind)] if info.silver_kind in SILVER_GROUPS and not mem.defeats else []
-    return BattlePlan('Win', plans + [any_plan()])
+    if s_shape:
+        return BattlePlan(s.describe(), build_plans([s]), covers_silver=True, fallback_any=stone_needed)
+    if g_shape:
+        return BattlePlan(g.describe(), build_plans([g]), covers_gold=True, fallback_any=stone_needed)
+    # Only a plain win is left: the 5 strongest heroes
+    wins = [r.describe() for r, need in ((s, s_win), (g, g_win)) if need]
+    return BattlePlan(' + '.join(wins) or 'win the battle', [any_plan()])
 
 
 # ---------------------------------------------------------------------------
@@ -301,16 +399,17 @@ class MistyValleyActivities(BaseActivity):
     def _on_map(self) -> bool:
         return self._visible('labels/misty/map_title', 0.8, (300, 20, 480, 100))
 
-    def enter(self) -> bool:
+    def enter(self, from_campaign: bool = True) -> bool:
         """Campaign -> Events -> Adventure -> Misty Valley -> world map flag -> Continue Adventure.
 
         Works out which of those screens is showing and does the next step, so it
         copes with the game remembering the Adventure tab or skipping a screen.
         """
-        logger.info("    Opening Misty Valley")
-        self.controller.confirm_location('campaign')
-        self.controller.expand_menus()
-        end = time.time() + 60
+        if from_campaign:
+            logger.info("    Opening Misty Valley")
+            self.controller.confirm_location('campaign')
+            self.controller.expand_menus()
+        end = time.time() + (60 if from_campaign else 20)
         idle = 0
         while time.time() < end:
             if self._stopped():
@@ -343,7 +442,7 @@ class MistyValleyActivities(BaseActivity):
                 continue
             # Loading or a transition: wait, then try to get back to campaign
             idle += 1
-            if idle in (8, 16):
+            if idle in ((8, 16) if from_campaign else (16,)):
                 self.controller.recover(silent=True)
             time.sleep(0.5)
         if not self._stopped():
@@ -351,6 +450,13 @@ class MistyValleyActivities(BaseActivity):
         return False
 
     def reenter(self) -> bool:
+        """Back once to the world map and in again (re-centres the camera on the cart)"""
+        logger.debug("    Re-entering Misty Valley")
+        self.controller.tap(*MAP_BACK, seconds=2)
+        if self.enter(from_campaign=False):
+            return True
+        if self._stopped():
+            return False
         self.controller.recover(silent=True)
         return self.enter()
 
@@ -382,8 +488,18 @@ class MistyValleyActivities(BaseActivity):
         didn't move, i.e. the top of the map is reached.
         """
         _, before = self._shot()
-        # Slow drag on the left side, away from stages and buttons, so it doesn't fling
-        self.controller.swipe(300, 650, 300, 1350, duration=900, seconds=1.5)
+        # The path wanders left and right, and after a win the camera pans to the
+        # rewards. Pull the map sideways too, so the highest gate or stage on screen
+        # (the way up) comes back to the middle.
+        anchors = [(y, x) for x, y in self._stage_huts(before)] + \
+                  [(y, x) for x, y, _ in self._gates(before)]
+        dx = 0
+        if anchors:
+            _, top_x = min(anchors)
+            dx = max(-400, min(400, 540 - top_x))
+        # Slow drag starting away from stages and buttons, so it doesn't fling
+        start_x = 300 if dx >= 0 else 780
+        self.controller.swipe(start_x, 650, start_x + dx, 1350, duration=900, seconds=1.5)
         _, after = self._shot()
         region = (slice(250, 1650), slice(0, 1080))
         moved = float(np.abs(before[region].astype(int) - after[region].astype(int)).mean()) > 4
@@ -400,7 +516,7 @@ class MistyValleyActivities(BaseActivity):
         """Stage number from the window title (binarised text comparison)"""
         mask = gray > 200
         best, best_n = 1.0, None
-        for n in range(1, LAST_STAGE + 1):
+        for n in range(1, 21):
             tpl = self._tpl(f'labels/misty/title_{n:02d}')
             if tpl is None:
                 continue
@@ -426,22 +542,63 @@ class MistyValleyActivities(BaseActivity):
                     best, kind = score, fname[len(prefix):-4]
         return kind, best
 
+    # Text the image templates stand for, used when OCR isn't available
+    TEMPLATE_TEXT = {
+        'silver_lightbearer': 'Win with 4 Lightbearers heroes in your formation.',
+        'silver_mauler': 'Win with 4 Maulers heroes in your formation.',
+        'silver_wilder': 'Win with 4 Wilders heroes in your formation.',
+        'silver_graveborn': 'Win with 4 Graveborn heroes in your formation.',
+        'silver_chd': 'Win with 4 Celestial/Hypogean/Dimensional heroes in your formation.',
+        'gold_factions5': 'Win with 5 different Factions in your formation.',
+        'gold_frontline_tank': 'All heroes placed on the Frontline must be Tank heroes.',
+        'gold_backline_ranger': 'All heroes placed on the Backline must be Ranger heroes.',
+        'gold_same_class': 'All heroes in formation must be the same class.',
+        'gold_no_ranger_mage': 'Win without any Ranger and Mage heroes in your formation.',
+        'gold_no_tank_mage': 'Win without any Tank and Mage heroes in your formation.',
+        'gold_ultimate': "Don't trigger Ultimate skills.",
+        'gold_defeat_within': 'Defeat an enemy hero in time.',
+        'gold_no_dying': 'Win without any heroes dying.',
+        'gold_win_within': 'Win within the time limit.',
+        'gold_victorious': 'Victorious Team Contains:',
+    }
+
+    def _read_stage_number(self, bgr, gray) -> Optional[int]:
+        from PIL import Image
+        text = ocr.read_line(Image.fromarray(cv2.cvtColor(bgr[355:410, 420:660], cv2.COLOR_BGR2RGB)))
+        if text:
+            m = re.search(r'(\d+)', text.replace('O', '0').replace('o', '0'))
+            if m:
+                return int(m.group(1))
+        return self._stage_number(gray)
+
+    def _read_challenges(self, bgr, gray) -> Tuple[Optional[str], Optional[str]]:
+        """Silver and Gold challenge text, read from the screen"""
+        from PIL import Image
+        lines = ocr.read_lines(Image.fromarray(cv2.cvtColor(bgr[820:1190, 300:960], cv2.COLOR_BGR2RGB)))
+        if lines is not None:
+            silver = ' '.join(t for y, t in lines if y < 150)
+            gold = ' '.join(t for y, t in lines if y > 210)
+            if silver or gold:
+                return silver, gold
+        # Fallback: the image templates of this month's challenges
+        silver, s_score = self._classify(gray, 'silver_', (300, 830, 660, 140))
+        gold, g_score = self._classify(gray, 'gold_', (300, 1050, 660, 140))
+        silver_text = self.TEMPLATE_TEXT.get(f'silver_{silver}') if s_score >= 0.85 else None
+        gold_text = self.TEMPLATE_TEXT.get(f'gold_{gold}', 'Win.') if g_score >= 0.85 else 'Win.'
+        return silver_text, gold_text
+
     def read_stage(self, bgr=None, gray=None) -> Optional[StageInfo]:
         if gray is None:
             bgr, gray = self._shot()
         if not self._in_stage_window(gray):
             return None
-        number = self._stage_number(gray)
+        number = self._read_stage_number(bgr, gray)
         if number is None:
             return None
         stamps = {row: self._score(gray, 'labels/misty/completed_stamp', (640, y0, 300, y1 - y0))[0] >= 0.6
                   for row, (y0, y1) in STAMP_ROWS.items()}
-        silver, s_score = self._classify(gray, 'silver_', (300, 830, 660, 140))
-        gold, g_score = self._classify(gray, 'gold_', (300, 1050, 660, 140))
-        if s_score < 0.85:
-            silver = None
-        if g_score < 0.85:
-            gold = 'unknown'
+        silver_text, gold_text = self._read_challenges(bgr, gray)
+        silver, gold = parse_challenge(silver_text), parse_challenge(gold_text)
         timer = self._score(gray, 'labels/misty/opens_timer', (330, 1420, 260, 110))[0] >= 0.8
         btn = bgr[1545:1615, 380:700].astype(int)
         playable = int(((btn[..., 0] > 200) & (btn[..., 1] > 190) & (btn[..., 2] < 170)).sum()) > 1000
@@ -507,14 +664,15 @@ class MistyValleyActivities(BaseActivity):
         is only touched when a class is needed (or a class set earlier has to be
         reset to ALL), and only once the panel is confirmed open.
         """
+        # The game keeps the class until another faction or class is picked
         if self._faction is None and faction != ALL:
             # Unknown state: go via ALL so a faction that's already selected isn't tapped off
             self.controller.tap(FACTION_X[ALL], FACTION_Y, seconds=0.6)
-            self._faction = ALL
+            self._faction, self._class = ALL, ALL
         if faction != self._faction:
             self.controller.tap(FACTION_X[faction], FACTION_Y, seconds=0.8)
-            self._faction = faction
-        if cls != ALL or self._class != ALL:
+            self._faction, self._class = faction, ALL
+        if cls != self._class:
             if not self._ensure_panel_expanded():
                 return False
             self.controller.tap(CLASS_X[cls], CLASS_Y, seconds=0.8)
@@ -638,8 +796,28 @@ class MistyValleyActivities(BaseActivity):
 
     # -- main loop ---------------------------------------------------------
 
+    def _log_stage(self, info: StageInfo) -> None:
+        def show(req, done):
+            if done:
+                return 'done'
+            return req.describe() if req else 'not read'
+        logger.info(f"    Stage {info.number}: {show(info.silver, info.silver_done)} | "
+                    f"{show(info.gold, info.gold_done)}")
+
+    def _nudge_for_stage(self) -> bool:
+        """Drag the map a little in each direction until a stage shows up"""
+        for dx, dy in ((300, 0), (-600, 0), (300, 300), (0, -600)):
+            if self._stopped():
+                return False
+            self.controller.swipe(540, 1000, 540 + dx, 1000 + dy, duration=600, seconds=1)
+            _, gray = self._shot()
+            if self._stage_huts(gray):
+                return True
+        self.controller.swipe(540, 1000, 540, 1300, duration=600, seconds=1)   # back to where it was
+        return False
+
     def run(self, stop_event=None, pause_event=None) -> bool:
-        """Clear Misty Valley up to stage 20"""
+        """Clear Misty Valley up to the last stage"""
         self._stop_event, self._pause_event = stop_event, pause_event
         logger.blue("Running Misty Valley")
         if not self.enter():
@@ -683,6 +861,9 @@ class MistyValleyActivities(BaseActivity):
                     self._close_stage()
                     return True
                 mem = memory.setdefault(n, StageMemory())
+                if not mem.logged:
+                    mem.logged = True
+                    self._log_stage(info)
                 plan = next_battle(info, mem)
                 if plan is None:
                     if not info.stone_done:
@@ -692,9 +873,6 @@ class MistyValleyActivities(BaseActivity):
                     logger.green(f"    Stage {n} done")
                     finished.add(n)
                     self._close_stage()
-                    if n >= LAST_STAGE:
-                        logger.green("Misty Valley complete (stage 20)")
-                        return True
                     continue
                 if not info.playable:
                     logger.warning(f"    Stage {n} is locked, stopping")
@@ -708,16 +886,19 @@ class MistyValleyActivities(BaseActivity):
                 scrolls = 0
                 recentred = False
                 continue
-            if not recentred and not self._stage_huts(gray):
-                # Leaving and re-entering puts the camera back on the cart
-                logger.debug("    Re-entering Misty Valley to centre on the cart")
-                if self._stopped() or not self.reenter():
-                    return False
-                recentred = True
-                scrolls = 0
-                continue
+            if not self._stage_huts(gray):
+                # After a win the camera pans to the rewards: look around a little first
+                if self._nudge_for_stage():
+                    continue
+                if not recentred:
+                    # Leaving and re-entering puts the camera back on the cart
+                    if self._stopped() or not self.reenter():
+                        return False
+                    recentred = True
+                    scrolls = 0
+                    continue
             if scrolls >= 6 or not self._scroll_up():
-                logger.warning("    No more stages found")
+                logger.green("Reached the top of the map, Misty Valley done")
                 return True
             scrolls += 1
 
