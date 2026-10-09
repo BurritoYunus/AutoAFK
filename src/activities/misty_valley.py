@@ -319,10 +319,11 @@ class MistyValleyActivities(BaseActivity):
         if not self.image.click_image('labels/misty/entry_continue', confidence=0.7, retry=3,
                                       seconds=2, suppress=True):
             self.controller.tap(540, 1525, seconds=2)
-        if self._wait_for('labels/misty/map_title', timeout=30, region=(300, 20, 480, 100)):
+        if self._wait_for('labels/misty/map_title', timeout=20, region=(300, 20, 480, 100)):
             self.wait(2)   # let the camera settle on the cart
             return True
-        logger.error("    Misty Valley map not found")
+        if not self._stopped():
+            logger.error("    Misty Valley map not found")
         return False
 
     def reenter(self) -> bool:
@@ -506,7 +507,7 @@ class MistyValleyActivities(BaseActivity):
     def _fight(self) -> Optional[bool]:
         """Press Battle and wait for the result. True = victory, False = defeat, None = unknown"""
         self.controller.tap(*FORMATION_BATTLE, seconds=3)
-        end = time.time() + 150
+        end = time.time() + 90
         while time.time() < end:
             if self._stopped():
                 return None
@@ -520,13 +521,16 @@ class MistyValleyActivities(BaseActivity):
 
     def _run_battle(self, info: StageInfo, mem: StageMemory, plan: BattlePlan) -> None:
         logger.purple(f"    Stage {info.number}: battle for {plan.label}")
-        self.controller.tap(*STAGE_BATTLE, seconds=3)
-        _, gray = self._shot()
-        if not self._in_formation(gray):
+        self.controller.tap(*STAGE_BATTLE, seconds=2)
+        # The game shows a cloud transition before the formation screen
+        if not self._wait_for('labels/misty/formation_remove', timeout=15, region=(960, 1040, 120, 130)):
+            if self._stopped():
+                return
             logger.warning("    Formation screen not found")
             mem.attempts += 1
             self.controller.recover(silent=True)
             return
+        self.wait(0.5)   # let the hero list finish loading
         built = any(self.build_team(p) for p in plan.plans)
         if not built:
             if plan.covers_silver:
@@ -549,8 +553,9 @@ class MistyValleyActivities(BaseActivity):
         else:
             logger.warning(f"    Stage {info.number}: battle result not found")
             self.controller.recover(silent=True)
+        # Back to the map, through the cloud transition again
         self._wait_for('labels/misty/map_title', timeout=15, region=(300, 20, 480, 100))
-        self.wait(2)   # the camera pans after a win
+        self.wait(1.5)   # the camera pans after a win
 
     # -- main loop ---------------------------------------------------------
 
@@ -559,6 +564,8 @@ class MistyValleyActivities(BaseActivity):
         self._stop_event, self._pause_event = stop_event, pause_event
         logger.blue("Running Misty Valley")
         if not self.enter():
+            return False
+        if self._stopped():
             return False
 
         memory: Dict[int, StageMemory] = {}
@@ -570,10 +577,16 @@ class MistyValleyActivities(BaseActivity):
                 logger.info("Misty Valley stopped")
                 return False
             if not self._on_map():
-                if reentries >= 3 or not self.reenter():
-                    logger.error("    Lost the Misty Valley map, stopping")
-                    return False
-                reentries += 1
+                # Possibly still in a cloud transition: give it a moment first
+                if not self._wait_for('labels/misty/map_title', timeout=8, region=(300, 20, 480, 100)):
+                    if self._stopped():
+                        logger.info("Misty Valley stopped")
+                        return False
+                    if reentries >= 3 or not self.reenter():
+                        if not self._stopped():
+                            logger.error("    Lost the Misty Valley map, stopping")
+                        return False
+                    reentries += 1
 
             _, gray = self._shot()
             acted = False
