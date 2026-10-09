@@ -215,6 +215,8 @@ class MistyValleyActivities(BaseActivity):
         self._tpl_cache: Dict[Tuple[str, bool], np.ndarray] = {}
         self._stop_event = None
         self._pause_event = None
+        self._faction: Optional[str] = None
+        self._class: str = ALL   # the class filter starts on ALL
 
     # -- template helpers -------------------------------------------------
 
@@ -471,13 +473,24 @@ class MistyValleyActivities(BaseActivity):
         # No notice: the formation was already empty
 
     def _set_filter(self, faction: str, cls: str) -> bool:
-        """Faction first, then class. Never taps the class row unless the panel is open."""
-        if not self._ensure_panel_expanded():
-            return False
-        self.controller.tap(FACTION_X[faction], FACTION_Y, seconds=0.6)
-        if not self._panel_expanded():
-            return False
-        self.controller.tap(CLASS_X[cls], CLASS_Y, seconds=0.8)
+        """Faction first, then class.
+
+        The faction row is visible whether the panel is open or not. The class row
+        is only touched when a class is needed (or a class set earlier has to be
+        reset to ALL), and only once the panel is confirmed open.
+        """
+        if self._faction is None and faction != ALL:
+            # Unknown state: go via ALL so a faction that's already selected isn't tapped off
+            self.controller.tap(FACTION_X[ALL], FACTION_Y, seconds=0.6)
+            self._faction = ALL
+        if faction != self._faction:
+            self.controller.tap(FACTION_X[faction], FACTION_Y, seconds=0.8)
+            self._faction = faction
+        if cls != ALL or self._class != ALL:
+            if not self._ensure_panel_expanded():
+                return False
+            self.controller.tap(CLASS_X[cls], CLASS_Y, seconds=0.8)
+            self._class = cls
         return True
 
     def _cards(self) -> List[Tuple[int, bool]]:
@@ -506,9 +519,7 @@ class MistyValleyActivities(BaseActivity):
     def build_team(self, plan: List[Slot]) -> bool:
         """Place 5 heroes following the plan. False if a slot can't be filled."""
         self._remove_all()
-        if not self._ensure_panel_expanded():
-            logger.warning("    Filter panel not found")
-            return False
+        self._faction = None   # unknown after the formation reloads; tap it again
         used: List[str] = []
         for i, slot in enumerate(plan):
             if len(used) >= 5:
@@ -602,6 +613,7 @@ class MistyValleyActivities(BaseActivity):
         memory: Dict[int, StageMemory] = {}
         finished = set()
         scrolls = reentries = 0
+        recentred = True   # entering already centres on the cart
 
         for _ in range(200):
             if self._stopped():
@@ -652,6 +664,15 @@ class MistyValleyActivities(BaseActivity):
                 break
 
             if acted:
+                scrolls = 0
+                recentred = False
+                continue
+            if not recentred and (scrolls >= 3 or not self._stage_huts(gray)):
+                # Leaving and re-entering puts the camera back on the cart
+                logger.debug("    Re-entering Misty Valley to centre on the cart")
+                if self._stopped() or not self.reenter():
+                    return False
+                recentred = True
                 scrolls = 0
                 continue
             if scrolls >= 6:
