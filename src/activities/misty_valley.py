@@ -375,16 +375,21 @@ class MistyValleyActivities(BaseActivity):
             gates.append((x, y, door < 0.75))
         return sorted(gates, key=lambda g: g[1])
 
-    def _scroll_up(self) -> None:
-        """Show the next stage up: tap the highest open gate, or drag the map"""
-        _, gray = self._shot()
-        open_gates = [(x, y) for x, y, is_open in self._gates(gray) if is_open and y > MAP_TOP]
-        if open_gates:
-            x, y = open_gates[0]
-            logger.debug(f"    Tapping open gate at ({x}, {y})")
-            self.controller.tap(x, y + 60, seconds=3)
-        else:
-            self.controller.swipe(540, 600, 540, 1400, duration=700, seconds=2)
+    def _scroll_up(self) -> bool:
+        """Show the stages further up by dragging the map down.
+
+        (Tapping a gate doesn't move the camera.) Returns False if the map
+        didn't move, i.e. the top of the map is reached.
+        """
+        _, before = self._shot()
+        # Slow drag on the left side, away from stages and buttons, so it doesn't fling
+        self.controller.swipe(300, 650, 300, 1350, duration=900, seconds=1.5)
+        _, after = self._shot()
+        region = (slice(250, 1650), slice(0, 1080))
+        moved = float(np.abs(before[region].astype(int) - after[region].astype(int)).mean()) > 4
+        if not moved:
+            logger.debug("    Map didn't move: top reached")
+        return moved
 
     # -- stage window ------------------------------------------------------
 
@@ -703,7 +708,7 @@ class MistyValleyActivities(BaseActivity):
                 scrolls = 0
                 recentred = False
                 continue
-            if not recentred and (scrolls >= 3 or not self._stage_huts(gray)):
+            if not recentred and not self._stage_huts(gray):
                 # Leaving and re-entering puts the camera back on the cart
                 logger.debug("    Re-entering Misty Valley to centre on the cart")
                 if self._stopped() or not self.reenter():
@@ -711,10 +716,9 @@ class MistyValleyActivities(BaseActivity):
                 recentred = True
                 scrolls = 0
                 continue
-            if scrolls >= 6:
+            if scrolls >= 6 or not self._scroll_up():
                 logger.warning("    No more stages found")
                 return True
-            self._scroll_up()
             scrolls += 1
 
         logger.warning("Misty Valley: step limit reached")
