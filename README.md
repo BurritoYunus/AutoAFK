@@ -175,6 +175,14 @@ You can schedule the bot to run automatically using Windows Task Scheduler:
 6. Arguments: `--dailies`
 7. Save and test
 
+### Shadow Realm on a schedule
+
+`AutoAFK.exe --shadowrealm` opens Golden Frontier → Realm of Shadows, collects rewards and uses every team attempt on the open floors, then goes back to the campaign screen. Attempts recharge about one per hour, up to 6 per team, so run it every ~6.5 hours:
+
+1. Create a task as above with Arguments `--shadowrealm`
+2. Trigger: daily, then under *Advanced settings* tick **Repeat task every** `6 hours 30 minutes` for a duration of `Indefinitely`
+3. Make sure the emulator is running (or set `emulatorpath` in `settings.ini`)
+
 ## Updating
 
 ### Automatic Check
