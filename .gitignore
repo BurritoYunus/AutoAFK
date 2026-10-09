@@ -80,3 +80,4 @@ AutoAFK/
 # adb.exe
 # AdbWinApi.dll
 # AdbWinUsbApi.dll
+.installed_version
