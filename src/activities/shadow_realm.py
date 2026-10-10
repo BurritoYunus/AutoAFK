@@ -72,6 +72,10 @@ class ShadowRealmActivities(BaseActivity):
 
     def _screen(self, texts) -> str:
         """Which screen is showing"""
+        # Golden Frontier shows its leaderboard the first time it's opened each day
+        if self._find(texts, 'leaderboard', (0, 0, 1080, 160)) or (
+                self._find(texts, 'division', (0, 1750, 1080, 1920)) and self._find(texts, 'personal', (0, 1750, 1080, 1920))):
+            return 'other'
         if self._find(texts, 'realmofshadows', (0, 0, 1080, 130)):
             return 'tower'
         if self._find(texts, 'taptocontinue'):
@@ -85,8 +89,6 @@ class ShadowRealmActivities(BaseActivity):
             return 'gf_map'
         if self._find(texts, 'begin', (300, 1600, 800, 1730)):
             return 'campaign'
-        if self._find(texts, 'leaderboard', (0, 0, 1080, 160)):
-            return 'other'
         return 'unknown'
 
     def _settle(self, seconds: float = SETTLE) -> None:
@@ -122,6 +124,7 @@ class ShadowRealmActivities(BaseActivity):
             self.controller.expand_menus()
         end = time.time() + 75
         unknown = 0
+        map_misses = 0
         while time.time() < end:
             if self._stopped():
                 return False
@@ -148,7 +151,13 @@ class ShadowRealmActivities(BaseActivity):
                     if enter:
                         self.controller.tap(enter[0][0] + 40, enter[0][1] - 50, seconds=2)
                     else:
-                        time.sleep(1)
+                        # Something covers the map (e.g. the daily leaderboard): Return
+                        map_misses += 1
+                        if map_misses % 2 == 0:
+                            logger.debug("    Shadow Realm shortcut not visible, tapping Return")
+                            self.controller.tap(55, 1830, seconds=2)
+                        else:
+                            time.sleep(1)
             elif screen == 'campaign':
                 if not self.image.click_image('labels/shadow/campaign_gf', confidence=0.8, seconds=4,
                                               suppress=True, region=(0, 600, 260, 300)):
@@ -156,8 +165,8 @@ class ShadowRealmActivities(BaseActivity):
                     if gf:
                         self.controller.tap(gf[0][0], gf[0][1], seconds=4)
             elif screen == 'other':
-                # Opened something else by mistake (e.g. a leaderboard): go back
-                logger.debug("    Unexpected screen, going back")
+                # The daily Golden Frontier leaderboard (or another screen): Return
+                logger.debug("    Leaderboard showing, tapping Return")
                 self.controller.tap(55, 1830, seconds=2)
             else:
                 unknown += 1

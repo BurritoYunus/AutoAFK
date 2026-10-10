@@ -182,6 +182,9 @@ class Logger:
         # Configure root logger
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.DEBUG)
+        # Libraries that flood the debug log (e.g. PIL's "STREAM b'IHDR'" on every image)
+        for noisy in ('PIL', 'urllib3', 'asyncio', 'httpx', 'httpcore', 'telegram'):
+            logging.getLogger(noisy).setLevel(logging.WARNING)
         
         # Console handler with color prefixes
         # In compiled version, sys.stdout might be None, so check first
