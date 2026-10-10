@@ -183,6 +183,7 @@ cycleformation = 30         # Switch formation every N minutes (0 = off)
 [ADVANCED]
 port = 7555                 # Emulator ADB port (0 = auto-detect)
 emulatorpath = C:\Program Files\BlueStacks_nxt\HD-Player.exe   # Started if not running
+emulatorargs =              # Extra launch options, e.g. --instance Pie64_1 (MuMu gets -v 0 automatically)
 loadingmuliplier = 2        # Slower PC/emulator? Increase (waits are multiplied)
 debug = False               # Save debug screenshots / more logging
 adbrestart = True           # Restart ADB on connect

@@ -87,7 +87,12 @@ class DeviceManager:
             return
             
         logger.info("Starting emulator...")
-        Popen([emulator_path, '-v', '0'], 
+        # Extra launch options from settings (e.g. BlueStacks: --instance Pie64).
+        # MuMu needs "-v 0" to open its first player; other emulators reject it.
+        extra = self.config.get('ADVANCED', 'emulatorargs', fallback='').split()
+        if not extra and 'mumu' in process_name.lower():
+            extra = ['-v', '0']
+        Popen([emulator_path, *extra], 
               shell=False, 
               startupinfo=STARTUPINFO(), 
               creationflags=CREATE_NO_WINDOW)
