@@ -28,7 +28,7 @@ Fork of [Hammanek/AutoAFK](https://github.com/Hammanek/AutoAFK), maintained at [
 ### App
 - ✅ Resizable Dailies Configuration window that scrolls, with Save always visible
 - ✅ Colour-coded log with per-stage summaries
-- ✅ Headless mode for Task Scheduler (`--dailies`, `--shadowrealm`, `--tower`)
+- ✅ Headless mode for [Task Scheduler](#scheduling-with-task-scheduler) (`--dailies`, `--shadowrealm`, `--tower`)
 - ✅ Auto-update from this repository's releases
 - ✅ Discord / Telegram notifications
 - ✅ Debug screenshots when something isn't found
@@ -78,14 +78,7 @@ Run Activity → **Shadow Realm**, or `AutoAFK.exe --shadowrealm`.
 
 ### Shadow Realm on a schedule
 
-Each attempt takes about **1 h 50 min** to come back, up to **6 per team**, so a team is full again after ~11 hours. Run it every **11 h 10 min** so no attempts are wasted:
-
-1. Task Scheduler → **Create Task** → Action *Start a program*:
-   - Program: `C:\path\to\AutoAFK\AutoAFK.exe`
-   - Arguments: `--shadowrealm`
-   - Start in: `C:\path\to\AutoAFK`
-2. Trigger: daily. Then tick **Repeat task every**, type `670 minutes`, and set the duration to **Indefinitely**.
-3. Set `emulatorpath` in `settings.ini` so the emulator is started if it's closed.
+Each attempt takes about **1 h 50 min** to come back, up to **6 per team**, so a team is full again after ~11 hours. Run it every **11 h 10 min** (`670 minutes`) so no attempts are wasted. See [Scheduling with Task Scheduler](#scheduling-with-task-scheduler) for the setup.
 
 ## Configuration
 
@@ -183,6 +176,7 @@ cycleformation = 30         # Switch formation every N minutes (0 = off)
 [ADVANCED]
 port = 7555                 # Emulator ADB port (0 = auto-detect)
 emulatorpath = C:\Program Files\BlueStacks_nxt\HD-Player.exe   # Started if not running
+emulatorargs =              # Extra launch options, e.g. --instance Pie64_1 (MuMu gets -v 0 automatically)
 loadingmuliplier = 2        # Slower PC/emulator? Increase (waits are multiplied)
 debug = False               # Save debug screenshots / more logging
 adbrestart = True           # Restart ADB on connect
@@ -235,15 +229,39 @@ Start-Process .\AutoAFK.exe -ArgumentList '--shadowrealm' -NoNewWindow -Wait
 
 Every run is also logged to the `logs` folder.
 
-### Scheduling dailies
+## Scheduling with Task Scheduler
 
-1. Task Scheduler → **Create Task** → Action *Start a program*:
-   - Program: `C:\path\to\AutoAFK\AutoAFK.exe`
-   - Arguments: `--dailies`
-   - Start in: `C:\path\to\AutoAFK`
-2. Trigger: daily, shortly after the daily reset.
+Let Windows start AutoAFK for you. The bot opens the emulator if it's closed, starts AFK Arena itself and goes back to the campaign when done, so you don't need to open anything first.
 
-See [Shadow Realm on a schedule](#shadow-realm-on-a-schedule) for the Shadow Realm task.
+**Before you start**, set these in `settings.ini`:
+```ini
+[ADVANCED]
+port = 0                                                  # or your emulator's ADB port
+emulatorpath = C:\Program Files\BlueStacks_nxt\HD-Player.exe
+```
+Point `emulatorpath` at the emulator's `.exe`, not a desktop shortcut (`.lnk`).
+
+**Create the task** (open *Task Scheduler* → **Create Task…**, not *Create Basic Task*):
+
+1. **General**
+   - Name: e.g. `AutoAFK Shadow Realm`
+   - Keep **Run only when user is logged on** (the emulator needs your desktop)
+   - Configure for: **Windows 10**
+2. **Triggers** → New…
+   - Shadow Realm: Begin the task **At log on**, tick **Delay task for** `2 minutes`, tick **Repeat task every** and type `670 minutes`, duration **Indefinitely**. It runs shortly after you log in, then every 11 h 10 min.
+   - Dailies: Begin the task **On a schedule** → **Daily**, at a time shortly after the daily reset.
+3. **Actions** → New… → *Start a program*
+   - Program/script: `C:\path\to\AutoAFK\AutoAFK.exe`
+   - Add arguments: `--shadowrealm` (or `--dailies`)
+   - Start in: `C:\path\to\AutoAFK` (the folder only, no `\AutoAFK.exe`, otherwise `settings.ini` isn't found)
+4. **Conditions**: untick **Start the task only if the computer is on AC power** if you're on a laptop.
+5. **Settings**
+   - Tick **Run task as soon as possible after a scheduled start is missed**
+   - If the task is already running: **Do not start a new instance**
+
+Make one task per activity. Don't let two tasks overlap, they would fight over the game.
+
+**Check it works:** close the emulator, right-click the task → **Run**. The emulator opens, AFK Arena starts about 30 s later and the bot gets going (the emulator window is minimized; open it to watch). Task Scheduler shows no console, so read the newest file in the `logs` folder. When it's done the task goes back to **Ready** with Last Run Result **(0x0)** (press F5 to refresh).
 
 ## Updating
 

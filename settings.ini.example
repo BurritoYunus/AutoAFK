@@ -82,6 +82,8 @@ ignoreformations = False
 adbrestart = True
 popularformations = False
 emulatorpath = C:\Program Files\Netease\MuMuPlayerGlobal-12.0\shell\MuMuPlayer.exe
+# Optional extra launch options for the emulator, e.g. for a second BlueStacks instance: --instance Pie64_1
+emulatorargs =
 customcode = False
 autoupdate = True
 
