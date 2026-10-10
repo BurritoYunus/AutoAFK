@@ -154,20 +154,31 @@ class ShadowRealmActivities(BaseActivity):
             elif screen == 'gf_map':
                 # The shortcut on the left moves the camera to the realm and opens it (its height
                 # changes with the other event icons in that column)
-                if not self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.8, seconds=3,
-                                              suppress=True, region=(0, 800, 260, 900)):
+                if self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.8, seconds=3,
+                                          suppress=True, region=(0, 800, 260, 900)):
+                    logger.debug("    Tapped Shadow Realm shortcut")
+                else:
                     enter = self._find(texts, 'enter')
                     if enter:
+                        logger.debug(f"    Tapped Enter at {enter[0]}")
                         self.controller.tap(enter[0][0] + 40, enter[0][1] - 50, seconds=2)
                     else:
                         # Never Return here: that would leave Golden Frontier. Just look again.
                         time.sleep(1)
             elif screen == 'campaign':
-                if not self.image.click_image('labels/shadow/campaign_gf', confidence=0.8, seconds=4,
-                                              suppress=True, region=(0, 600, 260, 300)):
+                if self.image.click_image('labels/shadow/campaign_gf', confidence=0.8, seconds=1,
+                                          suppress=True, region=(0, 600, 260, 300)):
+                    logger.debug("    Tapped Golden Frontier (image)")
+                else:
                     gf = self._find(texts, 'golden', (0, 600, 260, 900))
-                    if gf:
-                        self.controller.tap(gf[0][0], gf[0][1], seconds=4)
+                    if not gf:
+                        time.sleep(1)
+                        continue
+                    logger.debug(f"    Tapped Golden Frontier (text at {gf[0]})")
+                    self.controller.tap(gf[0][0], gf[0][1], seconds=1)
+                # Wait for Golden Frontier to open: tapping the same spot again on its map
+                # would hit one of the map's own buttons
+                self._wait_gone('campaign', 15)
             elif screen == 'other':
                 # The daily Golden Frontier leaderboard (or another screen): Return
                 # One Return goes back to the map; wait for it to close so it isn't tapped twice
