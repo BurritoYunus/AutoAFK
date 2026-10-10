@@ -152,9 +152,10 @@ class ShadowRealmActivities(BaseActivity):
                 if not self.image.click_image('labels/shadow/popup_go', confidence=0.8, seconds=3, suppress=True):
                     self.controller.tap(*GO_BUTTON, seconds=4)
             elif screen == 'gf_map':
-                # The shortcut on the left moves the camera to the realm and opens it
+                # The shortcut on the left moves the camera to the realm and opens it (its height
+                # changes with the other event icons in that column)
                 if not self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.8, seconds=3,
-                                              suppress=True, region=(0, 1150, 260, 400)):
+                                              suppress=True, region=(0, 800, 260, 900)):
                     enter = self._find(texts, 'enter')
                     if enter:
                         self.controller.tap(enter[0][0] + 40, enter[0][1] - 50, seconds=2)
