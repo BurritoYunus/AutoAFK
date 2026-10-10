@@ -36,15 +36,32 @@ logging.addLevelName(PURPLE, 'PURPLE')
 class ColoredFormatter(logging.Formatter):
     """Custom formatter with timestamps and clean output"""
     
+    # ANSI colours for terminals, matching the app's log box
+    COLOURS = {
+        'green': '\033[92m', 'blue': '\033[94m', 'purple': '\033[95m', 'orange': '\033[33m',
+        'yellow': '\033[93m', 'dim': '\033[90m', 'silver': '\033[37m', 'gold': '\033[93m',
+        'warning': '\033[33m', 'error': '\033[91m',
+    }
+
     def format(self, record) -> str:
         # Add timestamp
         timestamp = datetime.now().strftime('%H:%M:%S')
         
         # Format the message
         message = record.getMessage()
-        
-        # Return formatted message with timestamp
-        return f"[{timestamp}] {message}"
+        line = f"[{timestamp}] {message}"
+
+        if os.environ.get('AUTOAFK_CONSOLE_COLOURS') or (hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()):
+            tag = getattr(record, 'tag', None)
+            if not tag:
+                tag = {BLUE: 'blue', GREEN: 'green', PURPLE: 'purple'}.get(record.levelno)
+            if not tag and record.levelno >= logging.ERROR:
+                tag = 'error'
+            elif not tag and record.levelno >= logging.WARNING:
+                tag = 'warning'
+            if tag in self.COLOURS:
+                line = f"{self.COLOURS[tag]}{line}\033[0m"
+        return line
 
 
 class ScreenshotOnErrorHandler(logging.Handler):

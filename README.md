@@ -177,11 +177,23 @@ You can schedule the bot to run automatically using Windows Task Scheduler:
 
 ### Shadow Realm on a schedule
 
-`AutoAFK.exe --shadowrealm` opens Golden Frontier → Realm of Shadows, collects rewards and uses every team attempt on the open floors, then goes back to the campaign screen. Attempts recharge about one per hour, up to 6 per team, so run it every ~6.5 hours:
+`AutoAFK.exe --shadowrealm` opens Golden Frontier → Realm of Shadows, collects rewards and uses every team attempt on the open floors, then goes back to the campaign screen.
 
-1. Create a task as above with Arguments `--shadowrealm`
-2. Trigger: daily, then under *Advanced settings* tick **Repeat task every** `6 hours 30 minutes` for a duration of `Indefinitely`
-3. Make sure the emulator is running (or set `emulatorpath` in `settings.ini`)
+Each attempt takes about 1 h 50 min to come back, up to 6 per team, so a team is full again after ~11 hours. Run it every **11 h 10 min** so no attempts are wasted:
+
+1. Create a task as above with Arguments `--shadowrealm` and **Start in** set to the AutoAFK folder
+2. Trigger: daily, then under *Advanced settings* tick **Repeat task every** and type `670 minutes`, for a duration of `Indefinitely`
+3. Set `emulatorpath` in `settings.ini` (e.g. `C:\Program Files\BlueStacks_nxt\HD-Player.exe`) so the emulator is started if it's closed
+
+### Seeing the output in PowerShell
+
+Headless runs (`--dailies`, `--shadowrealm`, `--tower`) print their log to the terminal that started them. PowerShell doesn't wait for AutoAFK.exe by default, so start it like this to keep the prompt until the run is done:
+
+```powershell
+Start-Process .\AutoAFK.exe -ArgumentList '--shadowrealm' -NoNewWindow -Wait
+```
+
+The full log is also written to the `logs` folder.
 
 ## Updating
 
