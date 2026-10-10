@@ -310,7 +310,7 @@ class ShadowRealmActivities(BaseActivity):
     # -- battle ------------------------------------------------------------
 
     def _battle(self, x: int, y: int, floor: Optional[int]) -> str:
-        """Fight one node. Returns 'won', 'no_attempts', 'running' or 'failed'."""
+        """Fight one node. Returns 'won', 'no_attempts' or 'failed'."""
         self.controller.tap(x, y, seconds=2)
         screen, texts = self._wait_screen({'teams'}, timeout=25)
         if screen != 'teams':
@@ -337,19 +337,19 @@ class ShadowRealmActivities(BaseActivity):
             _say("    ✔ Victory", 'green')
             return 'won'
         if screen == 'tower':
-            # Later floors finish the battle in the background, with a timer on the node
-            _say("    ⏳ Battle running, waiting for it to finish", 'dim')
-            return 'running'
+            # Back on the tower without a result screen: the battle is done
+            _say("    ✔ Victory", 'green')
+            return 'won'
         return 'failed'
 
-    def _wait_for_running(self, timeout: float = 75) -> None:
-        """Wait until a background battle finishes (a Receive shows up)"""
-        end = time.time() + timeout
-        while time.time() < end and not self._stopped():
-            texts = self._read()
-            if self._find(texts, 'receive', (0, 250, 1080, 1700)):
-                return
-            time.sleep(5)
+    def _boss_tracker(self, texts) -> Optional[str]:
+        """Guild progress on a boss floor (every 20 floors), e.g. "16/40", if it's showing"""
+        for x, y, t in texts:
+            if x > 600 and 250 < y < 1700 and re.fullmatch(r'\d+/\d+', t):
+                return t
+        if self._find(texts, 'defeated', (0, 250, 1080, 1700)):
+            return '?'
+        return None
 
     # -- main --------------------------------------------------------------
 
@@ -377,6 +377,7 @@ class ShadowRealmActivities(BaseActivity):
             return False, battles
         reentries = 0
         scrolled_empty = 0
+        confirmed = False
         while battles < MAX_BATTLES:
             if self._stopped():
                 logger.info("Shadow Realm stopped")
@@ -398,21 +399,35 @@ class ShadowRealmActivities(BaseActivity):
                     _say(f"✔ Reached the highest explorable floor ({self.highest_floor})", 'green')
                     return True, battles
             if not challenges:
-                if scrolled_empty < 3 and self._scroll_down():
+                # A boss floor with the guild tracker and no Challenge: the boss is done and the
+                # next floors open once enough of the guild has beaten it
+                tracker = self._boss_tracker(texts)
+                if tracker:
+                    progress = f" ({tracker} guild members)" if tracker != '?' else ''
+                    _say(f"✔ Boss done, waiting for the guild to catch up{progress}", 'green')
+                    return True, battles
+                if scrolled_empty < 2 and self._scroll_down():
                     scrolled_empty += 1
                     continue
+                if not confirmed:
+                    # Back to the map and in again, so the tower shows the current floor
+                    confirmed = True
+                    scrolled_empty = 0
+                    logger.debug("    No Challenge visible, re-entering to check")
+                    if self.reenter():
+                        continue
+                    return False, battles
                 _say("✔ Nothing left to challenge right now", 'green')
                 return True, battles
             scrolled_empty = 0
+            confirmed = False
             x, y, floor = challenges[0]
             outcome = self._battle(x, y, floor)
             if outcome == 'no_attempts':
                 _say("✔ No attempts left on any team", 'green')
                 return True, battles
-            if outcome in ('won', 'running'):
+            if outcome == 'won':
                 battles += 1
-                if outcome == 'running':
-                    self._wait_for_running()
             else:
                 logger.warning("    Couldn't start the battle, re-entering")
                 if reentries >= 3 or not self.reenter():

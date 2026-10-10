@@ -19,7 +19,7 @@ Fork of [Hammanek/AutoAFK](https://github.com/Hammanek/AutoAFK), maintained at [
 
 ### Activities (Run Activity panel)
 - ✅ **Misty Valley** – clears every open stage: reads each stage's challenges with text recognition, builds teams with the faction and class filters (strongest heroes first) and does Silver and Gold where possible
-- ✅ **Shadow Realm** – Golden Frontier → Realm of Shadows: collects rewards, uses every team's attempts on the open floors, stops at the highest explorable floor
+- ✅ **Shadow Realm** – Golden Frontier → Realm of Shadows: collects rewards, uses every team's attempts on the open floors, kills the boss every 20 floors
 - ✅ Arena of Heroes, Arcane Labyrinth, Fight of Fates, Battle of Blood, Heroes of Esperia, Guild Hunts
 
 ### Auto Push
@@ -70,11 +70,12 @@ Because the challenges are read from the screen, a new month's challenges work w
 
 Run Activity → **Shadow Realm**, or `AutoAFK.exe --shadowrealm`.
 
-1. **Getting in:** Campaign → **Golden Frontier**. If the daily leaderboard opens, the bot taps Return. Then the Shadow Realm shortcut → **Go**.
+1. **Getting in:** Campaign → **Golden Frontier**. If the leaderboard opens, the bot taps Return once. Then the Shadow Realm shortcut → **Go**.
 2. **Floor limit:** it reads **Highest explorable floor** when it first enters and never goes past it.
 3. **Rewards:** it taps every **Receive**, then closes the rewards popup once per floor.
 4. **Battles:** it takes the **Challenge** buttons top to bottom and left to right, scrolling for lower floors. Each battle uses the team with the most attempts left (e.g. `4/6`). Teams that are *Recovering Blessed Flames* are skipped.
-5. **Stopping:** it stops when every team is out of attempts, nothing is left to challenge (boss not cleared by the guild yet, locked floors), or the highest floor is reached. Then it goes back to the campaign.
+5. **Bosses:** every 20 floors there is a boss with one Challenge button. The bot kills it like any other node. The next floors only open once enough of the guild has beaten it (the tracker next to the boss).
+6. **Stopping:** it stops when every team is out of attempts, when the boss is done and the guild tracker shows with no Challenge left, or at the highest explorable floor. If no Challenge is visible, it goes back to the map and in again once to make sure. Then it returns to the campaign.
 
 ### Shadow Realm on a schedule
 
