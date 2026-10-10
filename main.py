@@ -1292,10 +1292,41 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def attach_console() -> None:
+    """Show headless output in the terminal that started AutoAFK.exe.
+
+    AutoAFK.exe is a window app, so Windows gives it no console and print/log
+    output goes nowhere. Attach to the parent's console (PowerShell/cmd) if
+    there is one; does nothing when started by Task Scheduler or double-click.
+    """
+    if sys.platform != 'win32' or sys.stdout is not None:
+        return
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        if not kernel32.AttachConsole(-1):   # ATTACH_PARENT_PROCESS
+            return
+        kernel32.SetConsoleOutputCP(65001)   # UTF-8, for the symbols in the log
+        out = open('CONOUT$', 'w', encoding='utf-8', errors='replace', buffering=1)
+        sys.stdout = sys.stderr = out
+        # Colours: turn on ANSI escape codes for this console
+        handle = kernel32.GetStdHandle(-11)
+        mode = ctypes.c_uint32()
+        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            kernel32.SetConsoleMode(handle, mode.value | 0x0004)   # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        os.environ['AUTOAFK_CONSOLE_COLOURS'] = '1'
+        print()   # start below the PowerShell prompt
+    except Exception:
+        pass
+
+
 def main() -> None:
     """Main entry point"""
     global args
     args = parse_arguments()
+
+    if args.dailies or args.shadowrealm or args.tower or args.autotower:
+        attach_console()
     
     # If --dailies flag, run headless
     if args.dailies:

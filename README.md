@@ -1,329 +1,285 @@
 # AutoAFK
 
-Automated bot for AFK Arena game. Handles daily activities, arena battles, guild hunts, and more.
+Automated bot for AFK Arena. It runs your dailies, arena, guild hunts, store, events and more on an Android emulator over ADB, and can play newer modes such as **Misty Valley** and **Shadow Realm** by reading the screen.
 
-Fork of [Hammanek/AutoAFK](https://github.com/Hammanek/AutoAFK). Updates are published from [BurritoYunus/AutoAFK](https://github.com/BurritoYunus/AutoAFK).
+Fork of [Hammanek/AutoAFK](https://github.com/Hammanek/AutoAFK), maintained at [BurritoYunus/AutoAFK](https://github.com/BurritoYunus/AutoAFK). Updates are published from this repository.
 
 ## Features
 
-- ✅ Daily activities automation (26 activities)
-- ✅ Arena battles (Arena of Heroes, Heroes of Esperia)
-- ✅ Guild hunts and activities
-- ✅ Bounty board management
-- ✅ Shop purchases
-- ✅ Tower pushing
-- ✅ Labyrinth runs
-- ✅ Campaign progression
-- ✅ Summon management
-- ✅ Auto-update system
-- ✅ Headless mode support
+### Dailies (one button, or `--dailies`)
+- ✅ AFK rewards, fast rewards, mail, companion points, mercenaries
+- ✅ Fountain of Time, King's Tower, Oak Inn, bag consumables, level up, summons
+- ✅ **Guild Hunts** – works with the new guild *island* layout (falls back to the old one); Wrizz, Soren and optional Soren activation on chosen days
+- ✅ **Twisted Realm** – via Hellscape on the guild island
+- ✅ **Store** – purchases and refreshes (quick-buy or item by item)
+- ✅ **Collect Merchants** – redesigned store: opens only emporiums and tabs with a red **!**, takes only items marked **Free** (never taps a price), claims reached pass rewards (Champions of Esperia, Twisted Bounties, Regal Rewards); old store flow kept as a fallback
+- ✅ Arena of Heroes, Temporal Rift and Gladiator collection
+- ✅ Bounty board (solo, team and event bounties)
+- ✅ Arcane Labyrinth, quests
+
+### Activities (Run Activity panel)
+- ✅ **Misty Valley** – clears every open stage: reads each stage's challenges with text recognition, builds teams with the faction and class filters (strongest heroes first) and does Silver and Gold where possible
+- ✅ **Shadow Realm** – Golden Frontier → Realm of Shadows: collects rewards, uses every team's attempts on the open floors, stops at the highest explorable floor
+- ✅ Arena of Heroes, Arcane Labyrinth, Fight of Fates, Battle of Blood, Heroes of Esperia, Guild Hunts
+
+### Auto Push
+- ✅ Campaign and every tower open today, with formation choice and formation cycling
+
+### App
+- ✅ Resizable Dailies Configuration window that scrolls, with Save always visible
+- ✅ Colour-coded log with per-stage summaries
+- ✅ Headless mode for Task Scheduler (`--dailies`, `--shadowrealm`, `--tower`)
+- ✅ Auto-update from this repository's releases
+- ✅ Discord / Telegram notifications
+- ✅ Debug screenshots when something isn't found
 
 ## Quick Start
 
-### 1. Download
-
-Download the latest `AutoAFK.zip` from [Releases](https://github.com/BurritoYunus/AutoAFK/releases/latest)
-
-### 2. Extract
-
-Extract the entire folder to your desired location.
-
-### 3. Configure
-
-Rename `settings.ini.example` to `settings.ini` and edit the settings you want to enable/disable.
-
-### 4. Run
-
-Double-click `AutoAFK.exe`
+1. **Download** the latest `AutoAFK.zip` from [Releases](https://github.com/BurritoYunus/AutoAFK/releases/latest).
+2. **Extract** the whole folder somewhere, e.g. your Desktop.
+3. **Configure:** rename `settings.ini.example` to `settings.ini`. Set your emulator's ADB `port` and `emulatorpath` (see [Advanced](#advanced)).
+4. **Run** `AutoAFK.exe`.
 
 ## Requirements
 
 - Windows 10/11 (64-bit)
-- Android emulator or device with ADB enabled
-- ADB is included in the release package
-- No Python required (fully compiled)
+- An Android emulator (e.g. BlueStacks, MuMu) with **ADB enabled**
+- Resolution **1080×1920 (portrait)**
+- Game language **English**
+- ADB is included in the release. No Python needed for `AutoAFK.exe`.
 
-## How do I run it?
-Configure your Android emulator so that:
-* ADB is enabled
-* Resolution is 1920x1080
-* DPI is 240
-* AFK's language is set to English
+Running from source instead: Python 3.11/3.12, then `install.bat` and `start.bat` (or `pip install -r requirements.txt` and `python main.py`).
+
+## Misty Valley
+
+Run Activity → **Misty Valley**.
+
+1. **Getting in:** the bot goes Campaign → Events → Adventure → Misty Valley → Continue Adventure. The camera centres on the cart.
+2. **Each stage:** it opens the stage and reads the stage number and the challenge text, then works out a team:
+   - *Win with N <faction> heroes*, *N different factions*, *Frontline/Backline must be <class>*, *same class*, *without any <class>* → team rules. Silver and Gold are combined into one battle when possible, otherwise done in separate battles.
+   - Time limits, no deaths, ultimates → just win with the strongest team.
+   - *Victorious Team Contains* (specific heroes) → skipped.
+3. **Building the team:** remove all, then pick heroes with the faction filter, plus the class filter only when a challenge needs it. Heroes are taken from the top-left (strongest), and the first 2 placed are the frontline.
+4. **Defeats:** after a loss it drops that challenge and wins the stage with the strongest heroes. It stops after 2 defeats on one stage.
+5. **Moving on:** it drags the map up and sideways to the next stage. When nothing is visible, it nudges the map, or backs out once and re-enters.
+6. **Stopping:** it stops at a stage with an *Opens in* timer or at the top of the map, prints a summary, and goes back to the campaign.
+
+Because the challenges are read from the screen, a new month's challenges work without code changes.
+
+## Shadow Realm
+
+Run Activity → **Shadow Realm**, or `AutoAFK.exe --shadowrealm`.
+
+1. **Getting in:** Campaign → **Golden Frontier**. If the daily leaderboard opens, the bot taps Return. Then the Shadow Realm shortcut → **Go**.
+2. **Floor limit:** it reads **Highest explorable floor** when it first enters and never goes past it.
+3. **Rewards:** it taps every **Receive**, then closes the rewards popup once per floor.
+4. **Battles:** it takes the **Challenge** buttons top to bottom and left to right, scrolling for lower floors. Each battle uses the team with the most attempts left (e.g. `4/6`). Teams that are *Recovering Blessed Flames* are skipped.
+5. **Stopping:** it stops when every team is out of attempts, nothing is left to challenge (boss not cleared by the guild yet, locked floors), or the highest floor is reached. Then it goes back to the campaign.
+
+### Shadow Realm on a schedule
+
+Each attempt takes about **1 h 50 min** to come back, up to **6 per team**, so a team is full again after ~11 hours. Run it every **11 h 10 min** so no attempts are wasted:
+
+1. Task Scheduler → **Create Task** → Action *Start a program*:
+   - Program: `C:\path\to\AutoAFK\AutoAFK.exe`
+   - Arguments: `--shadowrealm`
+   - Start in: `C:\path\to\AutoAFK`
+2. Trigger: daily. Then tick **Repeat task every**, type `670 minutes`, and set the duration to **Indefinitely**.
+3. Set `emulatorpath` in `settings.ini` so the emulator is started if it's closed.
 
 ## Configuration
 
-Edit `settings.ini`:
+Edit `settings.ini`, or use **Configure Dailies**, **Store Options** and **Advanced Options** in the app.
 
 ### Daily Activities
 ```ini
 [DAILIES]
-collectrewards = True       # Collect AFK rewards
+collectrewards = True       # AFK rewards
 collectmail = True          # Collect mail
-fastrewards = 0             # Fast rewards count (0 = disabled)
-companionpoints = True      # Collect companion points
-fountainoftime = True       # Use Fountain of Time
-kingstower = True           # Attempt King's Tower
-collectinn = True           # Collect from Inn
-guildhunt = True            # Do guild hunts
-storepurchases = True       # Make shop purchases
-twistedrealm = True         # Do Twisted Realm
-collectquests = True        # Collect quest rewards
-runlab = True               # Run Labyrinth
-levelup = True              # Auto level up heroes
-summonhero = False          # Auto summon heroes
+deletemail = True           # Delete read mail
+fastrewards = 1             # Fast rewards count (0 = off)
+companionpoints = True      # Companion points
+lendmercs = True            # Lend mercenaries
+attemptcampaign = False     # Attempt a campaign battle
+fountainoftime = True       # Fountain of Time
+kingstower = True           # King's Tower attempt
+collectinn = True           # Oak Inn gifts
+guildhunt = True            # Guild Hunts (Hunting Fields, Wrizz, Soren)
+storepurchases = True       # Store purchases
+shoprefreshes = 2           # Store refreshes
+twistedrealm = True         # Twisted Realm
+collectquests = True        # Quest rewards
+collectmerchants = True     # Free merchant deals and pass rewards
+runlab = True               # Arcane Labyrinth
+usebagconsumables = True    # Use bag consumables
+levelup = True              # Level up heroes
+summonhero = False          # Free summons
+sorenactivate = False       # Activate Soren...
+sorenactivate_days = 1,3,5,6,7   # ...on these days (1 = Monday)
+hibernate = False           # Hibernate the PC when done
 ```
 
 ### Arena
 ```ini
 [ARENA]
-battlearena = True          # Battle in Arena of Heroes
-arenabattles = 5            # Number of battles
-arenaopponent = 1           # Opponent selection (1-4)
-tscollect = True            # Collect Temporal Rift rewards
-gladiatorcollect = True     # Collect Gladiator Arena rewards
+battlearena = True          # Arena of Heroes battles
+arenabattles = 8            # Number of battles
+arenaopponent = 4
+tscollect = True            # Temporal Rift rewards
+gladiatorcollect = True     # Gladiator coins
 ```
 
 ### Bounties
 ```ini
 [BOUNTIES]
-dispatchsolobounties = True # Dispatch solo bounties
-dispatchteambounties = True # Dispatch team bounties
-dispatchdust = True         # Accept dust bounties
-dispatchdiamonds = False    # Accept diamond bounties
-dispatchshards = True       # Accept shard bounties
-refreshes = 0               # Number of refreshes
-remaining = 2               # Minimum remaining slots
+dispatchsolobounties = True
+dispatchteambounties = True
+dispatcheventbounties = True
+dispatchdust = True
+dispatchdiamonds = True
+dispatchshards = True
+dispatchjuice = True
+refreshes = 3               # Bounty refreshes
+remaining = 2               # Leave this many undispatched
 ```
 
-### Shop
+### Store
 ```ini
 [SHOP]
-arcanestaffs = True         # Buy Arcane Staffs
-timegazer = True            # Buy Timegazer cards
-dust_gold = True            # Buy dust with gold
-shards_gold = True          # Buy shards with gold
-poe = True                  # Buy from PoE shop
-quick = True                # Quick purchase mode
+quick = True                # Use Quick Buy when available
+arcanestaffs = True
+cores = False
+timegazer = True
+baits = False
+dust_gold = True
+shards_gold = True
+dust_diamond = True
+elite_soulstone = False
+superb_soulstone = False
+silver_emblem = False
+gold_emblem = False
+poe = True
 ```
 
 ### Events
 ```ini
 [EVENTS]
-fightoffates = False        # Do Fight of Fates
-battleofblood = False       # Do Battle of Blood
-circustour = False          # Do Circus Tour
-heroesofesperia = False     # Do Heroes of Esperia
+fightoffates = False
+battleofblood = False
+circustour = False
+heroesofesperia = False
+```
+
+### Auto Push
+```ini
+[PUSH]
+formation = 1               # Formation to copy (1-5), also set in the app
+useartifacts = True         # Copy artifacts with the formation
+cycleformation = 30         # Switch formation every N minutes (0 = off)
 ```
 
 ### Advanced
 ```ini
 [ADVANCED]
-port = 0                    # ADB port (0 = auto)
-loadingmuliplier = 1.0      # Speed multiplier (1.0 = normal)
-server = 0                  # Server selection
-debug = False               # Debug mode
-autoupdate = True           # Auto-update on startup
-emulatorpath = C:\path\to\emulator.exe  # Emulator path for restart
+port = 7555                 # Emulator ADB port (0 = auto-detect)
+emulatorpath = C:\Program Files\BlueStacks_nxt\HD-Player.exe   # Started if not running
+loadingmuliplier = 2        # Slower PC/emulator? Increase (waits are multiplied)
+debug = False               # Save debug screenshots / more logging
+adbrestart = True           # Restart ADB on connect
+ignoreformations = False    # Auto Push: keep the current team instead of copying a formation
+popularformations = False   # Auto Push: copy from the Popular formations tab
+autoupdate = True           # Update automatically on startup
+```
+
+### Notifications
+```ini
+[DISCORD]
+enable = False
+channel_id =
+token =
+
+[TELEGRAM]
+enable = False
+chat_id =
+token =
 ```
 
 ## Headless Mode
 
-The bot supports running without GUI for automation and scheduling.
+Run without the window, e.g. from Task Scheduler.
 
-### Daily Activities
-
-Run all configured daily activities:
 ```batch
-AutoAFK.exe --dailies
+AutoAFK.exe --dailies          # All enabled dailies
+AutoAFK.exe --shadowrealm      # Shadow Realm attempts
+AutoAFK.exe --autotower        # Push every tower open today
+AutoAFK.exe --tower c          # Push one tower: kt, lb, m, w, gb, c, h
 ```
 
-Or use the provided script:
-```batch
-start_dailies.bat
+All arguments:
 ```
-
-### Tower Pushing
-
-Push all towers automatically:
-```batch
-AutoAFK.exe --autotower
-```
-
-Push a specific tower:
-```batch
-AutoAFK.exe --tower c    # Celestial Tower
-```
-
-Available tower codes:
-- `kt` - King's Tower
-- `lb` - Lightbearer Tower
-- `m` - Mauler Tower
-- `w` - Wilder Tower
-- `gb` - Graveborn Tower
-- `c` - Celestial Tower
-- `h` - Hypogean Tower
-
-### Scheduling with Task Scheduler
-
-You can schedule the bot to run automatically using Windows Task Scheduler:
-
-1. Open Task Scheduler
-2. Create Basic Task
-3. Set trigger (e.g., daily at 8:00 AM)
-4. Action: Start a program
-5. Program: `C:\path\to\AutoAFK.exe`
-6. Arguments: `--dailies`
-7. Save and test
-
-### Shadow Realm on a schedule
-
-`AutoAFK.exe --shadowrealm` opens Golden Frontier → Realm of Shadows, collects rewards and uses every team attempt on the open floors, then goes back to the campaign screen. Attempts recharge about one per hour, up to 6 per team, so run it every ~6.5 hours:
-
-1. Create a task as above with Arguments `--shadowrealm`
-2. Trigger: daily, then under *Advanced settings* tick **Repeat task every** `6 hours 30 minutes` for a duration of `Indefinitely`
-3. Make sure the emulator is running (or set `emulatorpath` in `settings.ini`)
-
-## Updating
-
-### Automatic Check
-
-The bot checks for updates on startup and shows a notification if available.
-
-### Manual Update
-
-Run:
-```batch
-update.bat
-```
-
-The updater will:
-1. Download the latest version
-2. Backup your settings
-3. Install the update
-4. Restart the bot automatically
-
-Note: Updater is fully compiled - no Python installation needed!
-
-### Auto-Update
-
-Enable in `settings.ini`:
-```ini
-[ADVANCED]
-autoupdate = True
-```
-
-The bot will automatically update and restart when a new version is available.
-
-Updates come from [BurritoYunus/AutoAFK](https://github.com/BurritoYunus/AutoAFK):
-- **Compiled version (`AutoAFK.exe`)** updates from the latest GitHub release's `AutoAFK.zip`.
-- **Source version (`start.bat` / `python main.py`)** updates from the latest release, or from the `master` branch when there are no releases. A git clone is updated with `git pull --ff-only`. `settings.ini` is always kept.
-
-### Publishing an update
-
-1. Bump `VERSION` in `main.py` and merge to `master` (source installs pick this up).
-2. Push a matching tag, e.g. `git tag v2.0.7 && git push origin v2.0.7`. The *Build Executable* workflow builds `AutoAFK.zip` and publishes the release that compiled installs download.
-
-## Troubleshooting
-
-### Bot doesn't start
-
-1. Check if ADB is working: `adb devices`
-2. Check if device is connected
-3. Check `settings.ini` configuration
-4. Check logs in `logs/` folder
-
-### ADB not found
-
-ADB is included in the release package. If you have issues:
-1. Make sure `adb.exe` and `AdbWinApi.dll` are in the same folder as `AutoAFK.exe`
-2. Try restarting the emulator
-3. Check if Windows Defender is blocking ADB
-
-### Device not found
-
-1. Run `adb devices` in command prompt to see connected devices
-2. Make sure USB debugging is enabled (for physical devices)
-3. Make sure ADB is enabled in emulator settings
-4. Try restarting ADB: `adb kill-server` then `adb start-server`
-5. If using emulator, set correct port in `settings.ini` under `[ADVANCED]` section:
-   ```ini
-   port = 5555  # or your emulator's port
-   ```
-
-### Activities not working
-
-1. Check if game is running
-2. Check if game is at campaign screen
-3. Check image recognition settings
-4. Check debug screenshots in `debug/` folder
-
-### Update failed
-
-1. Download manually from [Releases](https://github.com/BurritoYunus/AutoAFK/releases/latest)
-2. Extract and replace all files except `settings.ini`
-3. Run `AutoAFK.exe`
-
-Note: Updater is fully compiled, no Python needed!
-
-## Command-Line Arguments
-
-### GUI Mode (default)
-```batch
-AutoAFK.exe
-```
-
-### Headless Modes
-
-Run daily activities without GUI:
-```batch
-AutoAFK.exe --dailies
-# or
-start_dailies.bat
-```
-
-Push all towers automatically:
-```batch
-AutoAFK.exe --autotower
-```
-
-Push specific tower:
-```batch
-AutoAFK.exe --tower kt     # King's Tower
-AutoAFK.exe --tower lb     # Lightbearer Tower
-AutoAFK.exe --tower m      # Mauler Tower
-AutoAFK.exe --tower w      # Wilder Tower
-AutoAFK.exe --tower gb     # Graveborn Tower
-AutoAFK.exe --tower c      # Celestial Tower
-AutoAFK.exe --tower h      # Hypogean Tower
-```
-
-### All Arguments
-
-```
--c, --config FILE       Use custom config file (default: settings.ini)
--d, --dailies           Run dailies without GUI
--at, --autotower        Push all towers automatically
--t, --tower NAME        Push specific tower (kt, lb, m, w, gb, c, h)
+-c, --config FILE       Use a different config file (default: settings.ini)
+-d, --dailies           Run dailies
+-sr, --shadowrealm      Run Shadow Realm
+-at, --autotower        Push all towers
+-t, --tower NAME        Push one tower (kt, lb, m, w, gb, c, h)
 -l, --logging           Enable file logging
 ```
 
-### Examples
+### Seeing the output in PowerShell
 
-```batch
-# Run dailies with custom config
-AutoAFK.exe --dailies --config my_settings.ini
+Headless runs print their log to the terminal that started them, in colour. PowerShell needs `.\` for programs in the current folder, and doesn't wait for AutoAFK.exe by default. To keep the prompt until the run is done, start it like this:
 
-# Push Celestial Tower with logging
-AutoAFK.exe --tower c --logging
-
-# Push all towers
-AutoAFK.exe --autotower
+```powershell
+Start-Process .\AutoAFK.exe -ArgumentList '--shadowrealm' -NoNewWindow -Wait
 ```
+
+Every run is also logged to the `logs` folder.
+
+### Scheduling dailies
+
+1. Task Scheduler → **Create Task** → Action *Start a program*:
+   - Program: `C:\path\to\AutoAFK\AutoAFK.exe`
+   - Arguments: `--dailies`
+   - Start in: `C:\path\to\AutoAFK`
+2. Trigger: daily, shortly after the daily reset.
+
+See [Shadow Realm on a schedule](#shadow-realm-on-a-schedule) for the Shadow Realm task.
+
+## Updating
+
+- **Automatic:** with `autoupdate = True`, the app checks [Releases](https://github.com/BurritoYunus/AutoAFK/releases) on startup, installs a newer version and restarts. `settings.ini` is always kept.
+- **Manual:** run `update.bat`, or download the latest `AutoAFK.zip` and replace everything except `settings.ini`.
+- **Source installs** update from the latest release, or from `master` when there is none. A git clone is updated with `git pull --ff-only`.
+
+### Publishing a release (maintainers)
+
+1. Merge your changes to `master`.
+2. Publish a release with a new tag, e.g. `v2.2.0`. The **Build Executable** workflow builds `AutoAFK.zip`, sets the version from the tag and attaches the zip to the release.
+3. If the workflow doesn't start by itself, run it from **Actions → Build Executable → Run workflow** on the tag.
+
+## Troubleshooting
+
+### Bot doesn't connect
+1. In the AutoAFK folder, run `.\adb.exe devices`. Your emulator should be listed.
+2. Make sure ADB is enabled in the emulator settings.
+3. Set the right `port` in `settings.ini` (BlueStacks shows it in its ADB settings, often `5555`).
+4. Restart ADB: `.\adb.exe kill-server`, then `.\adb.exe start-server`.
+
+### An activity stops or taps the wrong thing
+1. Check the emulator is **1080×1920 portrait** and the game is in English.
+2. Increase `loadingmuliplier` on a slow PC.
+3. Set `debug = True`, run again, and look in the `debug` folder: there's a screenshot of every screen the bot didn't recognise.
+4. Check the newest file in `logs`.
+
+### Update failed
+1. If the updater window looks stuck, click it and press Enter.
+2. Otherwise, download `AutoAFK.zip` from [Releases](https://github.com/BurritoYunus/AutoAFK/releases/latest) and replace everything except `settings.ini`.
 
 ## Support
 
 - Report issues: [GitHub Issues](https://github.com/BurritoYunus/AutoAFK/issues)
+- Include the log from `logs` and any screenshots from `debug`.
 
 ## Disclaimer
 
-This bot is for educational purposes only. Use at your own risk. The authors are not responsible for any consequences of using this bot.
+This bot is for educational purposes only. Automating the game may be against its terms of service. Use at your own risk. The authors are not responsible for any consequences of using this bot.
