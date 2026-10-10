@@ -296,6 +296,7 @@ Make one task per activity (e.g. one for Shadow Realm, one for dailies). If two 
 
 ## Support
 
+- If AutoAFK saves you time, you can buy me a coffee on [Ko-fi](https://ko-fi.com/dolphinafk) ☕
 - Report issues: [GitHub Issues](https://github.com/BurritoYunus/AutoAFK/issues)
 - Include the log from `logs` and any screenshots from `debug`.
 

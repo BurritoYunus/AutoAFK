@@ -20,6 +20,7 @@ VERSION = "2.1.0"
 
 # GitHub Repository (updates are fetched from here)
 GITHUB_REPO = "BurritoYunus/AutoAFK"
+KOFI_URL = 'https://ko-fi.com/dolphinafk'
 GITHUB_BRANCH = "master"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -435,6 +436,14 @@ class App(ctk.CTk):
         github_tag = f'github_link_{id(github_url)}'
         self.textbox.tag_add(github_tag, start_idx, end_idx)
         self.link_urls[github_tag] = github_url
+
+        # Ko-fi link (clickable)
+        self.textbox.insert('end', '☕ Support: ', 'info')
+        start_idx = self.textbox.index('end-1c')
+        self.textbox.insert('end', f'{KOFI_URL}\n', 'link')
+        end_idx = self.textbox.index('end-1c')
+        self.textbox.tag_add('kofi_link', start_idx, end_idx)
+        self.link_urls['kofi_link'] = KOFI_URL
         self.textbox.insert('end', '\n')
         
         # Check for updates
