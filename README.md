@@ -250,7 +250,7 @@ Point `emulatorpath` at the emulator's `.exe`, not a desktop shortcut (`.lnk`).
    - Configure for: **Windows 10**
 2. **Triggers** → New…
    - Shadow Realm: Begin the task **At log on**, tick **Delay task for** `2 minutes`, tick **Repeat task every** and type `670 minutes`, duration **Indefinitely**. It runs shortly after you log in, then every 11 h 10 min.
-   - Dailies: Begin the task **On a schedule** → **Daily**, at a time shortly after the daily reset.
+   - Dailies: Begin the task **On a schedule** → **Daily**, e.g. at `02:00`, recur every 1 day. With *Run task as soon as possible after a scheduled start is missed* (step 5), it runs when you turn the PC on if it was off at that time.
 3. **Actions** → New… → *Start a program*
    - Program/script: `C:\path\to\AutoAFK\AutoAFK.exe`
    - Add arguments: `--shadowrealm` (or `--dailies`)
@@ -260,7 +260,7 @@ Point `emulatorpath` at the emulator's `.exe`, not a desktop shortcut (`.lnk`).
    - Tick **Run task as soon as possible after a scheduled start is missed**
    - If the task is already running: **Do not start a new instance**
 
-Make one task per activity. Don't let two tasks overlap, they would fight over the game.
+Make one task per activity (e.g. one for Shadow Realm, one for dailies). If two start at the same time, the second waits until the first is finished (up to 4 hours), so they never fight over the game.
 
 **Check it works:** close the emulator, right-click the task → **Run**. The emulator opens, AFK Arena starts about 30 s later and the bot gets going (the emulator window is minimized; open it to watch). Task Scheduler shows no console, so read the newest file in the `logs` folder. When it's done the task goes back to **Ready** with Last Run Result **(0x0)** (press F5 to refresh).
 
