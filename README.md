@@ -19,7 +19,7 @@ Fork of [Hammanek/AutoAFK](https://github.com/Hammanek/AutoAFK), maintained at [
 
 ### Activities (Run Activity panel)
 - ✅ **Misty Valley** – clears every open stage: reads each stage's challenges with text recognition, builds teams with the faction and class filters (strongest heroes first) and does Silver and Gold where possible
-- ✅ **Shadow Realm** – Golden Frontier → Realm of Shadows: collects rewards, uses every team's attempts on the open floors, stops at the highest explorable floor
+- ✅ **Shadow Realm** – Golden Frontier → Realm of Shadows: collects rewards, uses every team's attempts on the open floors, kills the boss every 20 floors
 - ✅ Arena of Heroes, Arcane Labyrinth, Fight of Fates, Battle of Blood, Heroes of Esperia, Guild Hunts
 
 ### Auto Push
@@ -70,11 +70,12 @@ Because the challenges are read from the screen, a new month's challenges work w
 
 Run Activity → **Shadow Realm**, or `AutoAFK.exe --shadowrealm`.
 
-1. **Getting in:** Campaign → **Golden Frontier**. If the daily leaderboard opens, the bot taps Return. Then the Shadow Realm shortcut → **Go**.
+1. **Getting in:** Campaign → **Golden Frontier**. If the leaderboard opens, the bot taps Return once. Then the Shadow Realm shortcut → **Go**.
 2. **Floor limit:** it reads **Highest explorable floor** when it first enters and never goes past it.
 3. **Rewards:** it taps every **Receive**, then closes the rewards popup once per floor.
 4. **Battles:** it takes the **Challenge** buttons top to bottom and left to right, scrolling for lower floors. Each battle uses the team with the most attempts left (e.g. `4/6`). Teams that are *Recovering Blessed Flames* are skipped.
-5. **Stopping:** it stops when every team is out of attempts, nothing is left to challenge (boss not cleared by the guild yet, locked floors), or the highest floor is reached. Then it goes back to the campaign.
+5. **Bosses:** every 20 floors there is a boss with one Challenge button. The bot kills it like any other node. The next floors only open once enough of the guild has beaten it (the tracker next to the boss).
+6. **Stopping:** it stops when every team is out of attempts, when the boss is done and the guild tracker shows with no Challenge left, or at the highest explorable floor. If no Challenge is visible, it goes back to the map and in again once to make sure. Then it returns to the campaign.
 
 ### Shadow Realm on a schedule
 
@@ -249,7 +250,7 @@ Point `emulatorpath` at the emulator's `.exe`, not a desktop shortcut (`.lnk`).
    - Configure for: **Windows 10**
 2. **Triggers** → New…
    - Shadow Realm: Begin the task **At log on**, tick **Delay task for** `2 minutes`, tick **Repeat task every** and type `670 minutes`, duration **Indefinitely**. It runs shortly after you log in, then every 11 h 10 min.
-   - Dailies: Begin the task **On a schedule** → **Daily**, at a time shortly after the daily reset.
+   - Dailies: Begin the task **On a schedule** → **Daily**, e.g. at `02:00`, recur every 1 day. With *Run task as soon as possible after a scheduled start is missed* (step 5), it runs when you turn the PC on if it was off at that time.
 3. **Actions** → New… → *Start a program*
    - Program/script: `C:\path\to\AutoAFK\AutoAFK.exe`
    - Add arguments: `--shadowrealm` (or `--dailies`)
@@ -259,7 +260,7 @@ Point `emulatorpath` at the emulator's `.exe`, not a desktop shortcut (`.lnk`).
    - Tick **Run task as soon as possible after a scheduled start is missed**
    - If the task is already running: **Do not start a new instance**
 
-Make one task per activity. Don't let two tasks overlap, they would fight over the game.
+Make one task per activity (e.g. one for Shadow Realm, one for dailies). If two start at the same time, the second waits until the first is finished (up to 4 hours), so they never fight over the game.
 
 **Check it works:** close the emulator, right-click the task → **Run**. The emulator opens, AFK Arena starts about 30 s later and the bot gets going (the emulator window is minimized; open it to watch). Task Scheduler shows no console, so read the newest file in the `logs` folder. When it's done the task goes back to **Ready** with Last Run Result **(0x0)** (press F5 to refresh).
 

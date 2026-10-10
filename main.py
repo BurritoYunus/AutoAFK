@@ -8,6 +8,7 @@ import sys
 # Text recognition (onnxruntime): never send usage data to Microsoft
 os.environ.setdefault('ORT_DISABLE_TELEMETRY', '1')
 import threading
+import time
 import datetime
 import logging
 import argparse
@@ -1327,6 +1328,9 @@ def main() -> None:
 
     if args.dailies or args.shadowrealm or args.tower or args.autotower:
         attach_console()
+        # Scheduled runs share one emulator: wait for any other run to finish first
+        if not wait_for_other_runs():
+            return
     
     # If --dailies flag, run headless
     if args.dailies:
@@ -1340,6 +1344,44 @@ def main() -> None:
         # Run GUI
         app = App()
         app.mainloop()
+
+
+_run_lock = None
+
+
+def wait_for_other_runs(max_wait_hours: float = 4) -> bool:
+    """Take the run lock, waiting while another headless run (e.g. Shadow Realm while the
+    dailies start) is still going. Two runs at once would fight over the emulator, and each
+    shuts down ADB when it finishes. The lock is released automatically when the process ends."""
+    global _run_lock
+    path = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), '.autoafk_run.lock')
+    try:
+        _run_lock = open(path, 'a+')
+    except OSError:
+        return True   # can't create the file: just run
+    def try_lock() -> bool:
+        try:
+            if os.name == 'nt':
+                import msvcrt
+                _run_lock.seek(0)
+                msvcrt.locking(_run_lock.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(_run_lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            return False
+    if try_lock():
+        return True
+    print("[INFO] Another AutoAFK run is still going, waiting for it to finish...")
+    end = time.time() + max_wait_hours * 3600
+    while time.time() < end:
+        time.sleep(30)
+        if try_lock():
+            print("[INFO] Other run finished, starting")
+            return True
+    print("[ERROR] The other run is still going after hours, skipping this one")
+    return False
 
 
 def run_dailies_headless() -> None:

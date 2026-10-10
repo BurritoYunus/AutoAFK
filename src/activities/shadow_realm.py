@@ -63,7 +63,17 @@ class ShadowRealmActivities(BaseActivity):
     def _read(self) -> List[Tuple[int, int, str]]:
         """All text on screen as (x, y, normalised text)"""
         boxes = ocr.read_boxes(self.device.get_screenshot().convert('RGB')) or []
-        return [(x, y, _norm(t)) for x, y, _, _, t in boxes]
+        texts = []
+        for x, y, w, _, t in boxes:
+            t = _norm(t)
+            # Floors with 4 nodes put the Challenge buttons close together; if they are read
+            # as one line, split it back into one entry per button
+            n = t.count('challenge')
+            if n > 1:
+                texts += [(int(x - w / 2 + w * (i + 0.5) / n), y, 'challenge') for i in range(n)]
+            else:
+                texts.append((x, y, t))
+        return texts
 
     @staticmethod
     def _find(texts, word: str, region=(0, 0, 1080, 1920)) -> List[Tuple[int, int]]:
@@ -154,20 +164,31 @@ class ShadowRealmActivities(BaseActivity):
             elif screen == 'gf_map':
                 # The shortcut on the left moves the camera to the realm and opens it (its height
                 # changes with the other event icons in that column)
-                if not self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.8, seconds=3,
-                                              suppress=True, region=(0, 800, 260, 900)):
+                if self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.8, seconds=3,
+                                          suppress=True, region=(0, 800, 260, 900)):
+                    logger.debug("    Tapped Shadow Realm shortcut")
+                else:
                     enter = self._find(texts, 'enter')
                     if enter:
+                        logger.debug(f"    Tapped Enter at {enter[0]}")
                         self.controller.tap(enter[0][0] + 40, enter[0][1] - 50, seconds=2)
                     else:
                         # Never Return here: that would leave Golden Frontier. Just look again.
                         time.sleep(1)
             elif screen == 'campaign':
-                if not self.image.click_image('labels/shadow/campaign_gf', confidence=0.8, seconds=4,
-                                              suppress=True, region=(0, 600, 260, 300)):
+                if self.image.click_image('labels/shadow/campaign_gf', confidence=0.8, seconds=1,
+                                          suppress=True, region=(0, 600, 260, 300)):
+                    logger.debug("    Tapped Golden Frontier (image)")
+                else:
                     gf = self._find(texts, 'golden', (0, 600, 260, 900))
-                    if gf:
-                        self.controller.tap(gf[0][0], gf[0][1], seconds=4)
+                    if not gf:
+                        time.sleep(1)
+                        continue
+                    logger.debug(f"    Tapped Golden Frontier (text at {gf[0]})")
+                    self.controller.tap(gf[0][0], gf[0][1], seconds=1)
+                # Wait for Golden Frontier to open: tapping the same spot again on its map
+                # would hit one of the map's own buttons
+                self._wait_gone('campaign', 15)
             elif screen == 'other':
                 # The daily Golden Frontier leaderboard (or another screen): Return
                 # One Return goes back to the map; wait for it to close so it isn't tapped twice
@@ -289,7 +310,7 @@ class ShadowRealmActivities(BaseActivity):
     # -- battle ------------------------------------------------------------
 
     def _battle(self, x: int, y: int, floor: Optional[int]) -> str:
-        """Fight one node. Returns 'won', 'no_attempts', 'running' or 'failed'."""
+        """Fight one node. Returns 'won', 'no_attempts' or 'failed'."""
         self.controller.tap(x, y, seconds=2)
         screen, texts = self._wait_screen({'teams'}, timeout=25)
         if screen != 'teams':
@@ -316,19 +337,19 @@ class ShadowRealmActivities(BaseActivity):
             _say("    ✔ Victory", 'green')
             return 'won'
         if screen == 'tower':
-            # Later floors finish the battle in the background, with a timer on the node
-            _say("    ⏳ Battle running, waiting for it to finish", 'dim')
-            return 'running'
+            # Back on the tower without a result screen: the battle is done
+            _say("    ✔ Victory", 'green')
+            return 'won'
         return 'failed'
 
-    def _wait_for_running(self, timeout: float = 75) -> None:
-        """Wait until a background battle finishes (a Receive shows up)"""
-        end = time.time() + timeout
-        while time.time() < end and not self._stopped():
-            texts = self._read()
-            if self._find(texts, 'receive', (0, 250, 1080, 1700)):
-                return
-            time.sleep(5)
+    def _boss_tracker(self, texts) -> Optional[str]:
+        """Guild progress on a boss floor (every 20 floors), e.g. "16/40", if it's showing"""
+        for x, y, t in texts:
+            if x > 600 and 250 < y < 1700 and re.fullmatch(r'\d+/\d+', t):
+                return t
+        if self._find(texts, 'defeated', (0, 250, 1080, 1700)):
+            return '?'
+        return None
 
     # -- main --------------------------------------------------------------
 
@@ -356,6 +377,7 @@ class ShadowRealmActivities(BaseActivity):
             return False, battles
         reentries = 0
         scrolled_empty = 0
+        confirmed = False
         while battles < MAX_BATTLES:
             if self._stopped():
                 logger.info("Shadow Realm stopped")
@@ -377,21 +399,35 @@ class ShadowRealmActivities(BaseActivity):
                     _say(f"✔ Reached the highest explorable floor ({self.highest_floor})", 'green')
                     return True, battles
             if not challenges:
-                if scrolled_empty < 3 and self._scroll_down():
+                # A boss floor with the guild tracker and no Challenge: the boss is done and the
+                # next floors open once enough of the guild has beaten it
+                tracker = self._boss_tracker(texts)
+                if tracker:
+                    progress = f" ({tracker} guild members)" if tracker != '?' else ''
+                    _say(f"✔ Boss done, waiting for the guild to catch up{progress}", 'green')
+                    return True, battles
+                if scrolled_empty < 2 and self._scroll_down():
                     scrolled_empty += 1
                     continue
+                if not confirmed:
+                    # Back to the map and in again, so the tower shows the current floor
+                    confirmed = True
+                    scrolled_empty = 0
+                    logger.debug("    No Challenge visible, re-entering to check")
+                    if self.reenter():
+                        continue
+                    return False, battles
                 _say("✔ Nothing left to challenge right now", 'green')
                 return True, battles
             scrolled_empty = 0
+            confirmed = False
             x, y, floor = challenges[0]
             outcome = self._battle(x, y, floor)
             if outcome == 'no_attempts':
                 _say("✔ No attempts left on any team", 'green')
                 return True, battles
-            if outcome in ('won', 'running'):
+            if outcome == 'won':
                 battles += 1
-                if outcome == 'running':
-                    self._wait_for_running()
             else:
                 logger.warning("    Couldn't start the battle, re-entering")
                 if reentries >= 3 or not self.reenter():
