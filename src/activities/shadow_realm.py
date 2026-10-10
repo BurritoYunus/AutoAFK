@@ -114,6 +114,15 @@ class ShadowRealmActivities(BaseActivity):
             time.sleep(1)
         return screen, texts
 
+    def _wait_gone(self, screen: str, timeout: float) -> None:
+        """Wait until a screen has closed"""
+        end = time.time() + timeout
+        while time.time() < end and not self._stopped():
+            if self._screen(self._read()) != screen:
+                self._settle()
+                return
+            time.sleep(1)
+
     # -- entering ----------------------------------------------------------
 
     def enter(self, from_campaign: bool = True) -> bool:
@@ -124,7 +133,6 @@ class ShadowRealmActivities(BaseActivity):
             self.controller.expand_menus()
         end = time.time() + 75
         unknown = 0
-        map_misses = 0
         while time.time() < end:
             if self._stopped():
                 return False
@@ -144,20 +152,16 @@ class ShadowRealmActivities(BaseActivity):
                 if not self.image.click_image('labels/shadow/popup_go', confidence=0.8, seconds=3, suppress=True):
                     self.controller.tap(*GO_BUTTON, seconds=4)
             elif screen == 'gf_map':
-                # The shortcut on the left moves the camera to the realm and opens it
+                # The shortcut on the left moves the camera to the realm and opens it (its height
+                # changes with the other event icons in that column)
                 if not self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.8, seconds=3,
-                                              suppress=True, region=(0, 1150, 260, 400)):
+                                              suppress=True, region=(0, 800, 260, 900)):
                     enter = self._find(texts, 'enter')
                     if enter:
                         self.controller.tap(enter[0][0] + 40, enter[0][1] - 50, seconds=2)
                     else:
-                        # Something covers the map (e.g. the daily leaderboard): Return
-                        map_misses += 1
-                        if map_misses % 2 == 0:
-                            logger.debug("    Shadow Realm shortcut not visible, tapping Return")
-                            self.controller.tap(55, 1830, seconds=2)
-                        else:
-                            time.sleep(1)
+                        # Never Return here: that would leave Golden Frontier. Just look again.
+                        time.sleep(1)
             elif screen == 'campaign':
                 if not self.image.click_image('labels/shadow/campaign_gf', confidence=0.8, seconds=4,
                                               suppress=True, region=(0, 600, 260, 300)):
@@ -166,8 +170,11 @@ class ShadowRealmActivities(BaseActivity):
                         self.controller.tap(gf[0][0], gf[0][1], seconds=4)
             elif screen == 'other':
                 # The daily Golden Frontier leaderboard (or another screen): Return
+                # One Return goes back to the map; wait for it to close so it isn't tapped twice
+                # (a second Return would leave Golden Frontier)
                 logger.debug("    Leaderboard showing, tapping Return")
-                self.controller.tap(55, 1830, seconds=2)
+                self.controller.tap(55, 1830, seconds=1)
+                self._wait_gone('other', 10)
             else:
                 unknown += 1
                 if unknown % 8 == 0:
