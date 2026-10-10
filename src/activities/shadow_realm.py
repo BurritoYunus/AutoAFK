@@ -63,7 +63,17 @@ class ShadowRealmActivities(BaseActivity):
     def _read(self) -> List[Tuple[int, int, str]]:
         """All text on screen as (x, y, normalised text)"""
         boxes = ocr.read_boxes(self.device.get_screenshot().convert('RGB')) or []
-        return [(x, y, _norm(t)) for x, y, _, _, t in boxes]
+        texts = []
+        for x, y, w, _, t in boxes:
+            t = _norm(t)
+            # Floors with 4 nodes put the Challenge buttons close together; if they are read
+            # as one line, split it back into one entry per button
+            n = t.count('challenge')
+            if n > 1:
+                texts += [(int(x - w / 2 + w * (i + 0.5) / n), y, 'challenge') for i in range(n)]
+            else:
+                texts.append((x, y, t))
+        return texts
 
     @staticmethod
     def _find(texts, word: str, region=(0, 0, 1080, 1920)) -> List[Tuple[int, int]]:
