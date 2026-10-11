@@ -141,13 +141,20 @@ class ShadowRealmActivities(BaseActivity):
             logger.info("    Opening Shadow Realm")
             self.controller.confirm_location('campaign')
             self.controller.expand_menus()
-        end = time.time() + 75
+        # 75 s per step: each new screen reached gives it more time (the first run after
+        # starting the PC is slow), up to 4 minutes in total
+        start = time.time()
+        end = start + 75
         unknown = 0
+        last = None
         while time.time() < end:
             if self._stopped():
                 return False
             texts = self._read()
             screen = self._screen(texts)
+            if screen != last and screen != 'unknown':
+                last = screen
+                end = min(max(end, time.time() + 75), start + 240)
             if screen not in ('unknown', 'tower'):
                 # Let the screen finish sliding in before tapping anything on it
                 self._settle()
@@ -164,7 +171,7 @@ class ShadowRealmActivities(BaseActivity):
             elif screen == 'gf_map':
                 # The shortcut on the left moves the camera to the realm and opens it (its height
                 # changes with the other event icons in that column)
-                if self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.8, seconds=3,
+                if self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.7, seconds=3,
                                           suppress=True, region=(0, 800, 260, 900)):
                     logger.debug("    Tapped Shadow Realm shortcut")
                 else:
@@ -347,9 +354,22 @@ class ShadowRealmActivities(BaseActivity):
         for x, y, t in texts:
             if x > 600 and 250 < y < 1700 and re.fullmatch(r'\d+/\d+', t):
                 return t
-        if self._find(texts, 'defeated', (0, 250, 1080, 1700)):
-            return '?'
+        # "N players defeated" under a boss that isn't open yet. Not the "This treasure
+        # guardian has already been defeated" banner: then the next floors are open.
+        for x, y, t in texts:
+            if 250 < y < 1700 and 'defeated' in t and 'already' not in t and 'guardian' not in t:
+                return '?'
         return None
+
+    def _collect_chest(self) -> bool:
+        """Open the treasure chest next to a defeated boss (every 20 floors), if it's still closed"""
+        if not self.image.click_image('labels/shadow/chest_closed', confidence=0.8, seconds=2,
+                                      suppress=True, region=(0, 200, 1080, 1500)):
+            return False
+        self._settle()
+        self.controller.tap(*CLOSE_POPUP, seconds=1.5)   # close the rewards popup
+        _say("    🎁 Opened the boss chest", 'green')
+        return True
 
     # -- main --------------------------------------------------------------
 
@@ -378,6 +398,7 @@ class ShadowRealmActivities(BaseActivity):
         reentries = 0
         scrolled_empty = 0
         confirmed = False
+        chests = 0
         while battles < MAX_BATTLES:
             if self._stopped():
                 logger.info("Shadow Realm stopped")
@@ -389,7 +410,11 @@ class ShadowRealmActivities(BaseActivity):
                     return False, battles
                 reentries += 1
                 continue
-            if self._collect_rewards(texts):
+            got = self._collect_rewards(texts)
+            if chests < 3 and self._collect_chest():
+                chests += 1
+                got = True
+            if got:
                 texts = self._read()
             challenges = self._challenges(texts)
             if self.highest_floor is not None:
