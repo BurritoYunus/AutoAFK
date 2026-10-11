@@ -163,25 +163,25 @@ class ShadowRealmActivities(BaseActivity):
                     continue
             if screen == 'tower':
                 self._read_highest(texts)
+                _say("    Entered the Realm of Shadows", 'dim')
                 return True
             if screen == 'popup':
                 self._read_highest(texts)
                 if not self.image.click_image('labels/shadow/popup_go', confidence=0.8, seconds=3, suppress=True):
                     self.controller.tap(*GO_BUTTON, seconds=4)
             elif screen == 'gf_map':
-                # The shortcut on the left moves the camera to the realm and opens it (its height
+                # After Go the camera sits on the realm with a Details / Enter bubble: Enter
+                if self.image.click_image('labels/shadow/map_enter', confidence=0.8, seconds=3,
+                                          suppress=True, region=(0, 300, 1080, 1400)):
+                    logger.debug("    Tapped Enter on the map")
+                # Otherwise the shortcut on the left opens the realm's popup (its height
                 # changes with the other event icons in that column)
-                if self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.7, seconds=3,
-                                          suppress=True, region=(0, 800, 260, 900)):
+                elif self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.7, seconds=3,
+                                            suppress=True, region=(0, 800, 260, 900)):
                     logger.debug("    Tapped Shadow Realm shortcut")
                 else:
-                    enter = self._find(texts, 'enter')
-                    if enter:
-                        logger.debug(f"    Tapped Enter at {enter[0]}")
-                        self.controller.tap(enter[0][0] + 40, enter[0][1] - 50, seconds=2)
-                    else:
-                        # Never Return here: that would leave Golden Frontier. Just look again.
-                        time.sleep(1)
+                    # Never Return here: that would leave Golden Frontier. Just look again.
+                    time.sleep(1)
             elif screen == 'campaign':
                 if self.image.click_image('labels/shadow/campaign_gf', confidence=0.8, seconds=1,
                                           suppress=True, region=(0, 600, 260, 300)):
