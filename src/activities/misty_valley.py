@@ -676,12 +676,27 @@ class MistyValleyActivities(BaseActivity):
 
     def _open_stage(self, x: int, y: int) -> Optional[StageInfo]:
         self.controller.tap(x + HUT_TAP_OFFSET[0], y + HUT_TAP_OFFSET[1], seconds=1.5)
+        info = None
         for _ in range(4):
             info = self.read_stage()
             if info:
-                return info
+                break
             self.wait(0.7)
-        return None
+        if info is None:
+            return None
+        # Right after a win the window animates the new COMPLETED stamp, so one read can see
+        # the stamp missing (and the portraits under it washed out). Read until two agree.
+        for _ in range(3):
+            self.wait(0.8)
+            again = self.read_stage()
+            if again is None:
+                break
+            same = ((again.stone_done, again.silver_done, again.gold_done, len(again.required)) ==
+                    (info.stone_done, info.silver_done, info.gold_done, len(info.required)))
+            info = again
+            if same:
+                break
+        return info
 
     def _close_stage(self) -> None:
         self.controller.tap(*STAGE_CLOSE, seconds=1)
@@ -937,8 +952,14 @@ class MistyValleyActivities(BaseActivity):
             self.controller.recover(silent=True)
             return
         self.wait(0.5)   # let the hero list finish loading
+        if plan.heroes and not info.required:
+            # The portraits weren't readable (window still animating): look again next round
+            logger.debug("    Required heroes not readable yet, reopening the stage")
+            mem.attempts += 1          # limits retries
+            self.controller.tap(*FORMATION_BACK, seconds=2)
+            return
         if plan.heroes:
-            built = bool(info.required) and self.build_team_with_heroes(info.required)
+            built = self.build_team_with_heroes(info.required)
         else:
             built = any(self.build_team(p) for p in plan.plans)
         if not built:
