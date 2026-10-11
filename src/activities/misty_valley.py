@@ -746,11 +746,33 @@ class MistyValleyActivities(BaseActivity):
                 return None
             _, gray = self._shot()
             if self._score(gray, 'labels/misty/tap_to_close', (250, 1650, 580, 150))[0] >= 0.8:
-                won = self._score(gray, 'labels/misty/victory', (150, 450, 780, 300))[0] >= 0.7
+                won = self._result_is_victory()
                 self.controller.tap(540, 1700, seconds=3)
                 return won
             time.sleep(2)
         return None
+
+    def _result_is_victory(self) -> bool:
+        """Read the result screen. "Tap to Continue" shows about a second before the banner,
+        so a single check could miss "Victory" and count a win as a defeat: read the banner
+        text (styled, read as e.g. "VLTORY") for a few seconds, and only call it a defeat
+        when "Defeat" is actually shown."""
+        score = 0.0
+        for _ in range(5):
+            pil = self.device.get_screenshot().convert('RGB')
+            gray = cv2.cvtColor(np.asarray(pil), cv2.COLOR_RGB2GRAY)
+            lines = ocr.read_lines(pil.crop((60, 300, 1020, 1150)))
+            words = ''.join(t for _, t in lines or []).lower()
+            if 'defeat' in words:
+                return False
+            if 'tory' in words or 'vict' in words:
+                return True
+            score = max(score, self._score(gray, 'labels/misty/victory', (150, 450, 780, 300))[0])
+            if score >= 0.7:
+                return True
+            self.wait(1)
+        logger.debug(f"    Result screen unclear (victory match {score:.2f})")
+        return score >= 0.5
 
     def _run_battle(self, info: StageInfo, mem: StageMemory, plan: BattlePlan) -> None:
         _say(f"    ⚔ Battle: {plan.label}", 'purple')
