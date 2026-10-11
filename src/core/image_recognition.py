@@ -127,7 +127,7 @@ class ImageRecognition:
                     x_center = round(x + w / 2)
                     y_center = round(y + h / 2)
                     logger.debug(f"Found {image_name}, tapping it")
-                self.device.tap(x_center, y_center)
+                    self.device.tap(x_center, y_center)
                 time.sleep(seconds * self._get_multiplier())
                 return True
             if attempt < retry - 1:
