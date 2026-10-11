@@ -249,14 +249,17 @@ class DeviceManager:
         
     def tap(self, x: int, y: int) -> None:
         """Tap at coordinates"""
+        logger.debug(f"Tap ({x}, {y})")
         self.device.input_tap(x, y)
         
     def swipe(self, x1: int, y1: int, x2: int, y2: int, duration: int = 100) -> None:
         """Swipe from (x1,y1) to (x2,y2)"""
+        logger.debug(f"Swipe ({x1}, {y1}) -> ({x2}, {y2})")
         self.device.shell(f"input swipe {x1} {y1} {x2} {y2} {duration}")
         
     def long_press(self, x: int, y: int, duration_ms: int = 1000) -> None:
         """Long press at coordinates"""
+        logger.debug(f"Long press ({x}, {y})")
         self.device.shell(f"input swipe {x} {y} {x} {y} {duration_ms}")
         
     def shell(self, command: str) -> str:
