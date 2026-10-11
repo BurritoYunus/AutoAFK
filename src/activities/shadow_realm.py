@@ -347,9 +347,22 @@ class ShadowRealmActivities(BaseActivity):
         for x, y, t in texts:
             if x > 600 and 250 < y < 1700 and re.fullmatch(r'\d+/\d+', t):
                 return t
-        if self._find(texts, 'defeated', (0, 250, 1080, 1700)):
-            return '?'
+        # "N players defeated" under a boss that isn't open yet. Not the "This treasure
+        # guardian has already been defeated" banner: then the next floors are open.
+        for x, y, t in texts:
+            if 250 < y < 1700 and 'defeated' in t and 'already' not in t and 'guardian' not in t:
+                return '?'
         return None
+
+    def _collect_chest(self) -> bool:
+        """Open the treasure chest next to a defeated boss (every 20 floors), if it's still closed"""
+        if not self.image.click_image('labels/shadow/chest_closed', confidence=0.8, seconds=2,
+                                      suppress=True, region=(0, 200, 1080, 1500)):
+            return False
+        self._settle()
+        self.controller.tap(*CLOSE_POPUP, seconds=1.5)   # close the rewards popup
+        _say("    🎁 Opened the boss chest", 'green')
+        return True
 
     # -- main --------------------------------------------------------------
 
@@ -378,6 +391,7 @@ class ShadowRealmActivities(BaseActivity):
         reentries = 0
         scrolled_empty = 0
         confirmed = False
+        chests = 0
         while battles < MAX_BATTLES:
             if self._stopped():
                 logger.info("Shadow Realm stopped")
@@ -389,7 +403,11 @@ class ShadowRealmActivities(BaseActivity):
                     return False, battles
                 reentries += 1
                 continue
-            if self._collect_rewards(texts):
+            got = self._collect_rewards(texts)
+            if chests < 3 and self._collect_chest():
+                chests += 1
+                got = True
+            if got:
                 texts = self._read()
             challenges = self._challenges(texts)
             if self.highest_floor is not None:
