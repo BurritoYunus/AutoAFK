@@ -828,13 +828,16 @@ class MistyValleyActivities(BaseActivity):
         if not self._set_filter(faction, ALL):
             return False
         self.wait(0.5)
-        for _ in range(8):
+        # Small, slow steps (about half a card): a long or quick swipe flings the list, so a
+        # hero could pass by only half visible. With the filter panel open, only about one
+        # row shows, so the step has to be smaller than the visible area minus a card.
+        for _ in range(30):
             pos = self._find_hero(portrait)
             if pos:
                 self.controller.tap(*pos, seconds=0.8)
                 return self._placed_at(*pos)
             before = self._shot()[1][LIST_TOP:LIST_BOTTOM_OPEN]
-            self.controller.swipe(540, 1380, 540, 1180, duration=600, seconds=1)
+            self.controller.swipe(540, 1370, 540, 1280, duration=1500, seconds=1)
             after = self._shot()[1][LIST_TOP:LIST_BOTTOM_OPEN]
             if float(np.abs(before.astype(int) - after.astype(int)).mean()) < 3:
                 break   # end of the list
