@@ -71,7 +71,7 @@ HERO_PORTRAIT_XS = (577, 690, 803)
 HERO_PORTRAIT_Y, HERO_PORTRAIT_SIZE = 1062, 105
 # Hero list on the formation screen
 LIST_TOP, LIST_BOTTOM_OPEN, LIST_BOTTOM_CLOSED = 1150, 1420, 1640
-LIST_SCROLL_X = 30               # empty strip left of the hero cards (cards start at x~56)
+LIST_SCROLL_XS = (14, 1062)      # empty strips left and right of the hero cards (cards: x~45-1028)
 HERO_MATCH = 0.8                 # the right hero scores ~0.97, others below ~0.6
 STAGE_CLOSE = (990, 340)
 STAMP_ROWS = {'stone': (540, 740), 'silver': (760, 965), 'gold': (980, 1185)}
@@ -832,18 +832,34 @@ class MistyValleyActivities(BaseActivity):
         # Small, slow steps (about half a card): a long or quick swipe flings the list, so a
         # hero could pass by only half visible. With the filter panel open, only about one
         # row shows, so the step has to be smaller than the visible area minus a card.
+        side = 0
         for _ in range(30):
             pos = self._find_hero(portrait)
             if pos:
                 self.controller.tap(*pos, seconds=0.8)
                 return self._placed_at(*pos)
             before = self._shot()[1][LIST_TOP:LIST_BOTTOM_OPEN]
-            # In the empty strip left of the cards: a slow drag on a card opens that hero
-            self.controller.swipe(LIST_SCROLL_X, 1370, LIST_SCROLL_X, 1280, duration=1500, seconds=1)
+            # Drag in the narrow empty strip beside the cards, quick enough not to count as a
+            # long press (a long press on or near a card opens that hero's page)
+            x = LIST_SCROLL_XS[side]
+            self.controller.swipe(x, 1370, x, 1280, duration=400, seconds=1)
+            self._leave_hero_page()
             after = self._shot()[1][LIST_TOP:LIST_BOTTOM_OPEN]
             if float(np.abs(before.astype(int) - after.astype(int)).mean()) < 3:
+                if side + 1 < len(LIST_SCROLL_XS):
+                    side += 1      # that strip didn't scroll: try the other side once
+                    continue
                 break   # end of the list
         return False
+
+    def _leave_hero_page(self) -> None:
+        """If a hero's page opened anyway, go back to the formation"""
+        _, gray = self._shot()
+        if self._in_formation(gray):
+            return
+        logger.debug("    A hero page opened while scrolling, going back")
+        self.controller.tap(*FORMATION_BACK, seconds=1.5)
+        self._wait_for('labels/misty/formation_remove', timeout=5, region=(960, 1040, 120, 130))
 
     def build_team_with_heroes(self, required) -> bool:
         """Required heroes first, then the strongest heroes for the free slots"""
