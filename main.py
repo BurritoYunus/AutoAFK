@@ -8,6 +8,7 @@ import sys
 # Text recognition (onnxruntime): never send usage data to Microsoft
 os.environ.setdefault('ORT_DISABLE_TELEMETRY', '1')
 import threading
+import queue
 import time
 import datetime
 import logging
@@ -394,6 +395,7 @@ class App(ctk.CTk):
         
         # Textbox - Modern styling
         self.textbox = ctk.CTkTextbox(master=self, width=580, height=500)
+        self.log_box = QueuedText(self.textbox)
         self.textbox.place(x=200, y=20)
         self.textbox.configure(
             text_color='#E8E8E8',           # Soft white
@@ -477,8 +479,9 @@ class App(ctk.CTk):
         self.quitButton.place_forget()
         
         # Setup logging redirect
-        sys.stdout = STDOutRedirector(self.textbox)
-        sys.stderr = STDOutRedirector(self.textbox)  # Also redirect errors
+        sys.stdout = STDOutRedirector(self.log_box)
+        sys.stderr = STDOutRedirector(self.log_box)  # Also redirect errors
+        self._drain_log()
         
         # Redirect logger to GUI
         self._setup_logger_redirect()
@@ -505,31 +508,30 @@ class App(ctk.CTk):
                     # A colour picked by the caller (extra={'tag': ...}) wins
                     tag = getattr(record, 'tag', None)
                     if tag:
-                        self.app.textbox.insert('end', timestamp + msg + '\n', tag)
+                        self.app.log_box.insert('end', timestamp + msg + '\n', tag)
                     # Color based on level - check custom levels first
                     elif record.levelno == GREEN:
-                        self.app.textbox.insert('end', timestamp + msg + '\n', 'green')
+                        self.app.log_box.insert('end', timestamp + msg + '\n', 'green')
                     elif record.levelno == BLUE:
-                        self.app.textbox.insert('end', timestamp + msg + '\n', 'blue')
+                        self.app.log_box.insert('end', timestamp + msg + '\n', 'blue')
                     elif record.levelno == PURPLE:
-                        self.app.textbox.insert('end', timestamp + msg + '\n', 'purple')
+                        self.app.log_box.insert('end', timestamp + msg + '\n', 'purple')
                     elif record.levelno >= logging.ERROR:
-                        self.app.textbox.insert('end', timestamp + msg + '\n', 'error')
+                        self.app.log_box.insert('end', timestamp + msg + '\n', 'error')
                     elif record.levelno >= logging.WARNING:
-                        self.app.textbox.insert('end', timestamp + msg + '\n', 'warning')
+                        self.app.log_box.insert('end', timestamp + msg + '\n', 'warning')
                     elif record.levelno >= logging.INFO:
                         # Color INFO messages based on content
                         if 'collected' in msg.lower() or 'completed' in msg.lower() or 'success' in msg.lower():
-                            self.app.textbox.insert('end', timestamp + msg + '\n', 'green')
+                            self.app.log_box.insert('end', timestamp + msg + '\n', 'green')
                         elif 'starting' in msg.lower() or 'attempting' in msg.lower():
-                            self.app.textbox.insert('end', timestamp + msg + '\n', 'blue')
+                            self.app.log_box.insert('end', timestamp + msg + '\n', 'blue')
                         else:
-                            self.app.textbox.insert('end', timestamp + msg + '\n')
+                            self.app.log_box.insert('end', timestamp + msg + '\n')
                     else:
-                        self.app.textbox.insert('end', timestamp + msg + '\n')
+                        self.app.log_box.insert('end', timestamp + msg + '\n')
                         
-                    self.app.textbox.see('end')
-                    self.app.update_idletasks()
+                    self.app.log_box.see('end')
                     
                     # Send to Discord if enabled
                     if hasattr(self.app, 'notification_manager') and self.app.notification_manager:
@@ -544,29 +546,50 @@ class App(ctk.CTk):
         handler.setLevel(logging.INFO)   # the window shows INFO and up; the log file keeps DEBUG (taps)
         logging.getLogger().addHandler(handler)
     
-    def _on_closing(self) -> None:
-        """Cleanup when closing the application"""
+    def _drain_log(self) -> None:
+        """Write queued log lines into the textbox (main thread, every 100 ms)"""
         try:
-            # Stop all threads
+            self.log_box.drain()
+        except Exception:
+            pass
+        self.after(100, self._drain_log)
+
+    def _on_closing(self) -> None:
+        """Close right away: stop the run, hide the window, clean up ADB in the
+        background (max ~8 s) and exit. Doing the ADB cleanup on the window's own
+        thread, or waiting for a paused run, made the window freeze."""
+        try:
             self.stop_all_threads()
-            
-            # Cleanup ADB synchronously to ensure it completes
+            # A paused run must be released so it can see the stop
+            for ev in (self.dailies_pause_event, self.activity_pause_event, self.push_pause_event):
+                ev.clear()
+            self.withdraw()
+        except Exception:
+            pass
+
+        def cleanup():
             try:
                 if self.device_manager:
-                    logger.info("Disconnecting and cleaning up ADB...")
                     self.device_manager.disconnect()
                     self.device_manager._kill_adb_processes()
-                    # Give it a moment to complete
-                    import time
-                    time.sleep(0.5)
-            except Exception as e:
-                logger.debug(f"Cleanup error: {e}")
-            
-        except Exception as e:
-            logger.debug(f"Cleanup error: {e}")
-        finally:
-            # Close the window
-            self.destroy()
+            except Exception:
+                pass
+
+        worker = threading.Thread(target=cleanup, daemon=True)
+        worker.start()
+        deadline = time.time() + 8
+
+        def finish():
+            if worker.is_alive() and time.time() < deadline:
+                self.after(200, finish)
+                return
+            try:
+                self.destroy()
+            finally:
+                # Don't wait for a run that is still in the middle of a step
+                os._exit(0)
+
+        self.after(200, finish)
     
     def start_dailies_thread(self) -> None:
         """Start dailies thread"""
@@ -574,7 +597,7 @@ class App(ctk.CTk):
             self.dailies_thread_running = True
             self.dailies_stop_event.clear()
             self.dailies_pause_event.clear()
-            self.dailies_thread = threading.Thread(target=self.dailies)
+            self.dailies_thread = threading.Thread(target=self.dailies, daemon=True)
             self.dailies_thread.start()
             self.button_state('disabled')
             self.stop_button_state('normal')
@@ -585,7 +608,7 @@ class App(ctk.CTk):
             self.activity_thread_running = True
             self.activity_stop_event.clear()
             self.activity_pause_event.clear()
-            self.activity_thread = threading.Thread(target=self.activity_manager)
+            self.activity_thread = threading.Thread(target=self.activity_manager, daemon=True)
             self.activity_thread.start()
             self.button_state('disabled')
             self.stop_button_state('normal')
@@ -596,7 +619,7 @@ class App(ctk.CTk):
             self.push_thread_running = True
             self.push_stop_event.clear()
             self.push_pause_event.clear()
-            self.push_thread = threading.Thread(target=self.push)
+            self.push_thread = threading.Thread(target=self.push, daemon=True)
             self.push_thread.start()
             self.button_state('disabled')
             self.stop_button_state('normal')
@@ -1223,6 +1246,37 @@ class AdvancedWindow(ctk.CTkToplevel):
             
         self.config.save()
         self.destroy()
+
+
+class QueuedText:
+    """Thread-safe front for the log textbox. Tk widgets may only be touched from the
+    main thread; the bot logs from its worker thread, so writes are queued and the
+    main thread inserts them every 100 ms. Writing to Tk from the worker thread made
+    the window freeze ("Not responding"), especially when closing."""
+
+    def __init__(self, widget):
+        self.widget = widget
+        self.queue = queue.Queue()
+        self.main_thread = threading.current_thread()
+
+    def insert(self, index, text, *tags):
+        self.queue.put((text, tags))
+
+    def see(self, index) -> None:
+        pass   # the drain scrolls to the end
+
+    def drain(self) -> None:
+        """Main thread: write queued text into the widget"""
+        wrote = False
+        try:
+            for _ in range(500):
+                text, tags = self.queue.get_nowait()
+                self.widget.insert('end', text, *tags)
+                wrote = True
+        except queue.Empty:
+            pass
+        if wrote:
+            self.widget.see('end')
 
 
 class STDOutRedirector:
