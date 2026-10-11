@@ -541,8 +541,8 @@ class App(ctk.CTk):
         # Add handler to root logger
         handler = GUIHandler(self)
         handler.setFormatter(logging.Formatter('%(message)s'))
+        handler.setLevel(logging.INFO)   # the window shows INFO and up; the log file keeps DEBUG (taps)
         logging.getLogger().addHandler(handler)
-        logging.getLogger().setLevel(logging.INFO)
     
     def _on_closing(self) -> None:
         """Cleanup when closing the application"""
