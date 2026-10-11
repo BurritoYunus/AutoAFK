@@ -12,7 +12,9 @@ strongest heroes (top-left first):
   rules. Rules from the Silver and Gold challenges are combined into one team when
   possible, otherwise they get separate battles.
 * Anything else (time limits, no deaths, ultimates) only needs a win.
-* "Victorious Team Contains" (specific heroes) is skipped.
+* "Victorious Team Contains" (specific heroes): each hero's faction is read from the badge on
+  its portrait, the hero is found in that faction's list by comparing portraits, and the
+  strongest heroes fill the rest of the team. Skipped if a hero isn't found (e.g. not owned).
 
 The run stops at the top of the map, or at a stage that shows an "Opens:" timer.
 """
@@ -64,6 +66,12 @@ FORMATION_BACK = (60, 1830)
 
 # Stage window
 STAGE_BATTLE = (540, 1580)
+# "Victorious Team Contains" portraits (left edges); unused spots show the beige card
+HERO_PORTRAIT_XS = (577, 690, 803)
+HERO_PORTRAIT_Y, HERO_PORTRAIT_SIZE = 1062, 105
+# Hero list on the formation screen
+LIST_TOP, LIST_BOTTOM_OPEN, LIST_BOTTOM_CLOSED = 1150, 1420, 1640
+HERO_MATCH = 0.8                 # the right hero scores ~0.97, others below ~0.6
 STAGE_CLOSE = (990, 340)
 STAMP_ROWS = {'stone': (540, 740), 'silver': (760, 965), 'gold': (980, 1185)}
 
@@ -112,7 +120,8 @@ class Requirement:
     back: Optional[frozenset] = None                        # classes allowed in the backline
     exclude: frozenset = frozenset()                        # classes not allowed
     same_class: bool = False
-    skip: bool = False                                      # can't be automated (specific heroes)
+    skip: bool = False                                      # can't be automated
+    heroes: bool = False                                    # "Victorious Team Contains" (portraits)
 
     @property
     def shaped(self) -> bool:
@@ -122,7 +131,9 @@ class Requirement:
 
     def describe(self) -> str:
         if self.skip:
-            return 'specific heroes (skipped)'
+            return 'skipped'
+        if self.heroes:
+            return 'specific heroes'
         parts = []
         for factions, n in self.groups:
             parts.append(f"{n} {'/'.join(FACTION_NAMES[f] for f in factions)}")
@@ -147,7 +158,7 @@ def parse_challenge(text: Optional[str]) -> Optional[Requirement]:
         return None
     t = _norm(text)
     if 'victorious' in t or 'contains' in t:
-        return Requirement(text=text, skip=True)
+        return Requirement(text=text, heroes=True)
     groups, distinct, front, back, exclude, same = [], 0, None, None, frozenset(), False
     m = re.search(r'(\d)differentfaction', t)
     if m or 'differentfaction' in t:
@@ -262,6 +273,8 @@ class StageInfo:
     gold: Optional[Requirement]
     timer: bool
     playable: bool
+    # "Victorious Team Contains": (faction, portrait BGR) for each hero shown
+    required: List[Tuple[Optional[str], np.ndarray]] = field(default_factory=list)
 
 
 @dataclass
@@ -281,6 +294,7 @@ class BattlePlan:
     covers_silver: bool = False
     covers_gold: bool = False
     fallback_any: bool = False   # if nothing can be built, still try a plain win
+    heroes: bool = False         # place the stage's required heroes first
 
 
 def next_battle(info: StageInfo, mem: StageMemory) -> Optional[BattlePlan]:
@@ -288,9 +302,20 @@ def next_battle(info: StageInfo, mem: StageMemory) -> Optional[BattlePlan]:
     s, g = info.silver, info.gold
     silver_needed = bool(not info.silver_done and s and not s.skip and not mem.silver_impossible)
     gold_needed = bool(not info.gold_done and g and not g.skip and not mem.gold_impossible)
+    g_heroes = gold_needed and g.heroes
+    if g_heroes:
+        gold_needed = False
     s_shape, g_shape = silver_needed and s.shaped, gold_needed and g.shaped
     s_win, g_win = silver_needed and not s.shaped, gold_needed and not g.shaped
     stone_needed = not info.stone_done
+
+    if g_heroes and not s_shape:
+        if mem.attempts >= MAX_ATTEMPTS_PER_STAGE or mem.defeats >= MAX_DEFEATS_PER_STAGE:
+            return None
+        # Required heroes + the strongest heroes (also covers a plain Silver win)
+        label = ' + '.join([g.describe()] + ([s.describe()] if s_win else []))
+        return BattlePlan(label, [any_plan()], covers_gold=True, fallback_any=stone_needed, heroes=True)
+    # With a shaped Silver, Silver goes first; the required heroes get their own battle after
 
     if not (s_shape or g_shape or s_win or g_win or stone_needed):
         return None
@@ -618,8 +643,35 @@ class MistyValleyActivities(BaseActivity):
         timer = self._score(gray, 'labels/misty/opens_timer', (330, 1420, 260, 110))[0] >= 0.8
         btn = bgr[1545:1615, 380:700].astype(int)
         playable = int(((btn[..., 0] > 200) & (btn[..., 1] > 190) & (btn[..., 2] < 170)).sum()) > 1000
+        required = self._read_required(bgr) if gold and gold.heroes and not stamps['gold'] else []
         return StageInfo(number, stamps['stone'], stamps['silver'], stamps['gold'],
-                         silver, gold, timer, playable)
+                         silver, gold, timer, playable, required)
+
+    def _read_required(self, bgr) -> List[Tuple[Optional[str], np.ndarray]]:
+        """Portraits next to "Victorious Team Contains", with the faction of each (from the
+        badge in the portrait's top-left corner, compared with the faction filter icons)"""
+        found = []
+        y, n = HERO_PORTRAIT_Y, HERO_PORTRAIT_SIZE
+        for x in HERO_PORTRAIT_XS:
+            p = bgr[y:y + n, x:x + n + 2]
+            if p.shape[0] < n or p.astype(int).mean(-1).std() < 30:   # plain card background
+                continue
+            found.append((self._badge_faction(p), p.copy()))
+        return found
+
+    def _badge_faction(self, portrait) -> Optional[str]:
+        corner = portrait[0:50, 0:50]
+        best, faction = 0.0, None
+        for f in FACTIONS:
+            icon = self._tpl(f'labels/misty/faction/{f}', gray=False)
+            if icon is None:
+                continue
+            for size in range(24, 40, 2):
+                t = cv2.resize(icon, (size, size))
+                score = cv2.minMaxLoc(cv2.matchTemplate(corner, t, cv2.TM_CCOEFF_NORMED))[1]
+                if score > best:
+                    best, faction = score, f
+        return faction if best >= 0.7 else None
 
     def _open_stage(self, x: int, y: int) -> Optional[StageInfo]:
         self.controller.tap(x + HUT_TAP_OFFSET[0], y + HUT_TAP_OFFSET[1], seconds=1.5)
@@ -746,6 +798,70 @@ class MistyValleyActivities(BaseActivity):
                 return False
         return True
 
+    def _find_hero(self, portrait) -> Optional[Tuple[int, int]]:
+        """Where a required hero's card is in the visible part of the hero list"""
+        h, w = portrait.shape[:2]
+        face = portrait[int(h * .3):int(h * .92), int(w * .12):int(w * .9)]   # no badge, no frame
+        bgr, gray = self._shot()
+        bottom = LIST_BOTTOM_OPEN if self._panel_expanded(gray) else LIST_BOTTOM_CLOSED
+        area = bgr[LIST_TOP:bottom]
+        best, pos = 0.0, None
+        for scale in (1.5, 1.6, 1.7, 1.8, 1.9):
+            t = cv2.resize(face, None, fx=scale, fy=scale)
+            if t.shape[0] > area.shape[0] or t.shape[1] > area.shape[1]:
+                continue
+            _, score, _, loc = cv2.minMaxLoc(cv2.matchTemplate(area, t, cv2.TM_CCOEFF_NORMED))
+            if score > best:
+                best, pos = score, (loc[0] + t.shape[1] // 2, LIST_TOP + loc[1] + t.shape[0] // 2)
+        logger.debug(f"    Hero search: best match {best:.2f} at {pos}")
+        return pos if best >= HERO_MATCH else None
+
+    def _placed_at(self, x: int, y: int) -> bool:
+        """Green tick on the card at (x, y)"""
+        bgr, _ = self._shot()
+        cell = bgr[max(y - 90, 0):y + 90, max(x - 90, 0):x + 90].astype(int)
+        b, g, r = cell[..., 0], cell[..., 1], cell[..., 2]
+        return int(((g > 190) & (g - r > 40) & (g - b > 80)).sum()) > 500
+
+    def _place_required(self, faction: str, portrait) -> bool:
+        """Pick the hero's faction and scroll through its list until the portrait matches"""
+        if not self._set_filter(faction, ALL):
+            return False
+        self.wait(0.5)
+        for _ in range(8):
+            pos = self._find_hero(portrait)
+            if pos:
+                self.controller.tap(*pos, seconds=0.8)
+                return self._placed_at(*pos)
+            before = self._shot()[1][LIST_TOP:LIST_BOTTOM_OPEN]
+            self.controller.swipe(540, 1380, 540, 1180, duration=600, seconds=1)
+            after = self._shot()[1][LIST_TOP:LIST_BOTTOM_OPEN]
+            if float(np.abs(before.astype(int) - after.astype(int)).mean()) < 3:
+                break   # end of the list
+        return False
+
+    def build_team_with_heroes(self, required) -> bool:
+        """Required heroes first, then the strongest heroes for the free slots"""
+        self._remove_all()
+        self._faction = None
+        for faction, portrait in required:
+            if faction is None:
+                logger.debug("    Couldn't tell a required hero's faction")
+                return False
+            if not self._place_required(faction, portrait):
+                _say(f"    A required {FACTION_NAMES[faction]} hero wasn't found", 'orange')
+                return False
+        placed = len(required)
+        if not self._set_filter(ALL, ALL):
+            return False
+        self.wait(0.5)
+        for x, checked in self._cards():
+            if placed >= 5:
+                break
+            if not checked and self._place(x):
+                placed += 1
+        return placed >= 5
+
     # -- battle ------------------------------------------------------------
 
     def _fight(self) -> Optional[bool]:
@@ -797,7 +913,10 @@ class MistyValleyActivities(BaseActivity):
             self.controller.recover(silent=True)
             return
         self.wait(0.5)   # let the hero list finish loading
-        built = any(self.build_team(p) for p in plan.plans)
+        if plan.heroes:
+            built = bool(info.required) and self.build_team_with_heroes(info.required)
+        else:
+            built = any(self.build_team(p) for p in plan.plans)
         if not built:
             if plan.covers_silver:
                 mem.silver_impossible = True

@@ -58,7 +58,7 @@ Run Activity → **Misty Valley**.
 2. **Each stage:** it opens the stage and reads the stage number and the challenge text, then works out a team:
    - *Win with N <faction> heroes*, *N different factions*, *Frontline/Backline must be <class>*, *same class*, *without any <class>* → team rules. Silver and Gold are combined into one battle when possible, otherwise done in separate battles.
    - Time limits, no deaths, ultimates → just win with the strongest team.
-   - *Victorious Team Contains* (specific heroes) → skipped.
+   - *Victorious Team Contains* (specific heroes) → each hero's faction is read from the badge on its portrait, the hero is found in that faction's list (scrolling if needed) and the strongest heroes fill the rest. Skipped if a hero isn't found. Nothing is stored per month: the portraits are read from the stage each time.
 3. **Building the team:** remove all, then pick heroes with the faction filter, plus the class filter only when a challenge needs it. Heroes are taken from the top-left (strongest), and the first 2 placed are the frontline.
 4. **Defeats:** after a loss it drops that challenge and wins the stage with the strongest heroes. It stops after 2 defeats on one stage.
 5. **Moving on:** it drags the map up and sideways to the next stage. When nothing is visible, it nudges the map, or backs out once and re-enters.
