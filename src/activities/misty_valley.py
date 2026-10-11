@@ -71,6 +71,7 @@ HERO_PORTRAIT_XS = (577, 690, 803)
 HERO_PORTRAIT_Y, HERO_PORTRAIT_SIZE = 1062, 105
 # Hero list on the formation screen
 LIST_TOP, LIST_BOTTOM_OPEN, LIST_BOTTOM_CLOSED = 1150, 1420, 1640
+LIST_SCROLL_X = 30               # empty strip left of the hero cards (cards start at x~56)
 HERO_MATCH = 0.8                 # the right hero scores ~0.97, others below ~0.6
 STAGE_CLOSE = (990, 340)
 STAMP_ROWS = {'stone': (540, 740), 'silver': (760, 965), 'gold': (980, 1185)}
@@ -837,7 +838,8 @@ class MistyValleyActivities(BaseActivity):
                 self.controller.tap(*pos, seconds=0.8)
                 return self._placed_at(*pos)
             before = self._shot()[1][LIST_TOP:LIST_BOTTOM_OPEN]
-            self.controller.swipe(540, 1370, 540, 1280, duration=1500, seconds=1)
+            # In the empty strip left of the cards: a slow drag on a card opens that hero
+            self.controller.swipe(LIST_SCROLL_X, 1370, LIST_SCROLL_X, 1280, duration=1500, seconds=1)
             after = self._shot()[1][LIST_TOP:LIST_BOTTOM_OPEN]
             if float(np.abs(before.astype(int) - after.astype(int)).mean()) < 3:
                 break   # end of the list
