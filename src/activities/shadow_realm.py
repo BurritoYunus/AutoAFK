@@ -141,13 +141,20 @@ class ShadowRealmActivities(BaseActivity):
             logger.info("    Opening Shadow Realm")
             self.controller.confirm_location('campaign')
             self.controller.expand_menus()
-        end = time.time() + 75
+        # 75 s per step: each new screen reached gives it more time (the first run after
+        # starting the PC is slow), up to 4 minutes in total
+        start = time.time()
+        end = start + 75
         unknown = 0
+        last = None
         while time.time() < end:
             if self._stopped():
                 return False
             texts = self._read()
             screen = self._screen(texts)
+            if screen != last and screen != 'unknown':
+                last = screen
+                end = min(max(end, time.time() + 75), start + 240)
             if screen not in ('unknown', 'tower'):
                 # Let the screen finish sliding in before tapping anything on it
                 self._settle()
@@ -164,7 +171,7 @@ class ShadowRealmActivities(BaseActivity):
             elif screen == 'gf_map':
                 # The shortcut on the left moves the camera to the realm and opens it (its height
                 # changes with the other event icons in that column)
-                if self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.8, seconds=3,
+                if self.image.click_image('labels/shadow/gf_realm_shortcut', confidence=0.7, seconds=3,
                                           suppress=True, region=(0, 800, 260, 900)):
                     logger.debug("    Tapped Shadow Realm shortcut")
                 else:
