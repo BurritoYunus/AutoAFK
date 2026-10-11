@@ -802,12 +802,15 @@ class MistyValleyActivities(BaseActivity):
     def _find_hero(self, portrait) -> Optional[Tuple[int, int]]:
         """Where a required hero's card is in the visible part of the hero list"""
         h, w = portrait.shape[:2]
-        face = portrait[int(h * .3):int(h * .92), int(w * .12):int(w * .9)]   # no badge, no frame
+        # Only the face: the card shows less of the hero than the stage portrait (its
+        # level bar and stars cover the top and bottom), so a bigger cut-out included
+        # parts the card doesn't show (Kalene scored 0.59 that way, 0.97 with the face)
+        face = portrait[int(h * .3):int(h * .7), int(w * .2):int(w * .85)]
         bgr, gray = self._shot()
         bottom = LIST_BOTTOM_OPEN if self._panel_expanded(gray) else LIST_BOTTOM_CLOSED
         area = bgr[LIST_TOP:bottom]
         best, pos = 0.0, None
-        for scale in (1.5, 1.6, 1.7, 1.8, 1.9):
+        for scale in (1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0):
             t = cv2.resize(face, None, fx=scale, fy=scale)
             if t.shape[0] > area.shape[0] or t.shape[1] > area.shape[1]:
                 continue
