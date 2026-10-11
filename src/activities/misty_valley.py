@@ -46,6 +46,7 @@ CLASSES = ['warrior', 'tank', 'ranger', 'mage', 'support']
 ALL = 'all'
 
 MAX_ATTEMPTS_PER_STAGE = 4
+LAST_STAGE = 20                    # the map has 20 stages
 MAX_DEFEATS_PER_STAGE = 2
 
 # Formation screen
@@ -403,6 +404,16 @@ class MistyValleyActivities(BaseActivity):
 
     def _on_map(self) -> bool:
         return self._visible('labels/misty/map_title', 0.8, (300, 20, 480, 100))
+
+    def _close_offer(self) -> bool:
+        """Close a shop offer ("Tap Anywhere to Close", e.g. the bundle after stage 20).
+        Taps below that text, away from the price buttons."""
+        lines = ocr.read_lines(self.device.get_screenshot().convert('RGB').crop((0, 1450, 1080, 1920)))
+        if any('tapanywhere' in re.sub(r'[^a-z]', '', t.lower()) for _, t in lines or []):
+            logger.debug("    Closing an offer popup")
+            self.controller.tap(540, 1860, seconds=2)
+            return True
+        return False
 
     def enter(self, from_campaign: bool = True) -> bool:
         """Campaign -> Events -> Adventure -> Misty Valley -> world map flag -> Continue Adventure.
@@ -895,6 +906,8 @@ class MistyValleyActivities(BaseActivity):
             if self._stopped():
                 logger.info("Misty Valley stopped")
                 return False
+            if not self._on_map() and self._close_offer():
+                continue
             if not self._on_map():
                 # Possibly still in a cloud transition: give it a moment first
                 if not self._wait_for('labels/misty/map_title', timeout=8, region=(300, 20, 480, 100)):
@@ -941,6 +954,14 @@ class MistyValleyActivities(BaseActivity):
                         self._cleared.append((n, info.silver_done, info.gold_done))
                     finished.add(n)
                     self._close_stage()
+                    if n >= LAST_STAGE:
+                        # The game shows two bundle offers after the last stage: close them
+                        for _ in range(4):
+                            self.wait(2)
+                            if not self._close_offer() and self._on_map():
+                                break
+                        _say(f"✔ All {LAST_STAGE} stages complete", 'green')
+                        return True
                     continue
                 if not info.playable:
                     logger.warning(f"    Stage {n} is locked, stopping")
