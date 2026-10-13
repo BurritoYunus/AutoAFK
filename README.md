@@ -204,7 +204,7 @@ token =
 Run without the window, e.g. from Task Scheduler.
 
 ```batch
-AutoAFK.exe --dailies          # All enabled dailies
+AutoAFK.exe --dailies          # All enabled dailies (skipped if already done since the daily reset)
 AutoAFK.exe --shadowrealm      # Shadow Realm attempts
 AutoAFK.exe --dailies --shadowrealm   # Dailies first (once per game day), then Shadow Realm
 AutoAFK.exe --autotower        # Push every tower open today

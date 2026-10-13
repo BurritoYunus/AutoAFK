@@ -1479,6 +1479,10 @@ def run_dailies_headless() -> None:
     print(f"AutoAFK {VERSION} - Headless Mode")
     print(f"https://github.com/{GITHUB_REPO}")
     print()
+    if dailies_done_today():
+        # Never twice per game day, e.g. when another scheduled task already ran them
+        print("[INFO] Dailies already done since the daily reset, skipping")
+        return
     
     try:
         # Load config
