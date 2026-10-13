@@ -1395,11 +1395,11 @@ def main() -> None:
         if not wait_for_other_runs():
             return
     
-    # If --dailies flag, run headless
-    if args.dailies:
-        run_dailies_headless()
-    elif args.shadowrealm:
+    # --shadowrealm (with --dailies: dailies first, once per day) or --dailies alone
+    if args.shadowrealm:
         run_shadow_realm_headless()
+    elif args.dailies:
+        run_dailies_headless()
     # If --tower or --autotower flag, run tower push
     elif args.tower or args.autotower:
         run_tower_push_headless()
@@ -1410,6 +1410,33 @@ def main() -> None:
 
 
 _run_lock = None
+
+DAILIES_MARKER = '.last_dailies'
+
+
+def _game_day() -> str:
+    """The game's current day (daily reset at 00:00 UTC)"""
+    return datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
+
+
+def _marker_path() -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), DAILIES_MARKER)
+
+
+def dailies_done_today() -> bool:
+    try:
+        with open(_marker_path(), encoding='utf-8') as f:
+            return f.read().strip() == _game_day()
+    except OSError:
+        return False
+
+
+def mark_dailies_done() -> None:
+    try:
+        with open(_marker_path(), 'w', encoding='utf-8') as f:
+            f.write(_game_day())
+    except OSError:
+        pass
 
 
 def wait_for_other_runs(max_wait_hours: float = 4) -> bool:
@@ -1485,6 +1512,7 @@ def run_dailies_headless() -> None:
         
         # Execute dailies using shared function
         execute_dailies(activity_manager, None, None)
+        mark_dailies_done()
             
     except Exception as e:
         print(f"[ERROR] {e}")
@@ -1521,6 +1549,17 @@ def run_shadow_realm_headless() -> None:
         )
         game_controller.expand_menus()
         game_controller.wait_until_game_active()
+        # The first start after the daily reset shows popups (events, offers, login rewards):
+        # close them and make sure the campaign screen is showing
+        game_controller.recover(silent=True)
+        if args.dailies:
+            if dailies_done_today():
+                print("[INFO] Dailies already done today, going straight to Shadow Realm")
+            else:
+                print("[INFO] Running dailies first...")
+                execute_dailies(activity_manager, None, None)
+                mark_dailies_done()
+                game_controller.recover(silent=True)
         activity_manager.shadow.run()
     except Exception as e:
         print(f"[ERROR] {e}")

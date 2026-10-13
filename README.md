@@ -206,6 +206,7 @@ Run without the window, e.g. from Task Scheduler.
 ```batch
 AutoAFK.exe --dailies          # All enabled dailies
 AutoAFK.exe --shadowrealm      # Shadow Realm attempts
+AutoAFK.exe --dailies --shadowrealm   # Dailies first (once per game day), then Shadow Realm
 AutoAFK.exe --autotower        # Push every tower open today
 AutoAFK.exe --tower c          # Push one tower: kt, lb, m, w, gb, c, h
 ```
@@ -214,7 +215,7 @@ All arguments:
 ```
 -c, --config FILE       Use a different config file (default: settings.ini)
 -d, --dailies           Run dailies
--sr, --shadowrealm      Run Shadow Realm
+-sr, --shadowrealm      Run Shadow Realm (with --dailies: dailies first if not done since the daily reset)
 -at, --autotower        Push all towers
 -t, --tower NAME        Push one tower (kt, lb, m, w, gb, c, h)
 -l, --logging           Enable file logging
@@ -253,7 +254,7 @@ Point `emulatorpath` at the emulator's `.exe`, not a desktop shortcut (`.lnk`).
    - Dailies: Begin the task **On a schedule** → **Daily**, e.g. at `02:00`, recur every 1 day. With *Run task as soon as possible after a scheduled start is missed* (step 5), it runs when you turn the PC on if it was off at that time.
 3. **Actions** → New… → *Start a program*
    - Program/script: `C:\path\to\AutoAFK\AutoAFK.exe`
-   - Add arguments: `--shadowrealm` (or `--dailies`)
+   - Add arguments: `--dailies --shadowrealm` (dailies first, once per game day, then Shadow Realm), or `--shadowrealm` / `--dailies` alone
    - Start in: `C:\path\to\AutoAFK` (the folder only, no `\AutoAFK.exe`, otherwise `settings.ini` isn't found)
 4. **Conditions**: untick **Start the task only if the computer is on AC power** if you're on a laptop.
 5. **Settings**

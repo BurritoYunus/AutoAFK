@@ -205,8 +205,11 @@ class ShadowRealmActivities(BaseActivity):
                 self._wait_gone('other', 10)
             else:
                 unknown += 1
-                if unknown % 8 == 0:
-                    self.controller.tap(55, 1830, seconds=2)   # stuck on an unknown screen: back
+                if unknown % 4 == 0:
+                    # Stuck on an unknown screen, e.g. a popup after the daily reset: close
+                    # popups and go back to the campaign (it walks in from there again)
+                    logger.debug("    Unknown screen, clearing popups")
+                    self.controller.recover(silent=True)
                 time.sleep(1)
         if not self._stopped():
             logger.error("    Shadow Realm not found")
