@@ -187,50 +187,64 @@ class MiscActivities(BaseActivity):
     def handle_circus_tour(self, battles: int = 3) -> bool:
         """Handle Circus Tour event"""
         logger.blue("Attempting to run Circus Tour battles...")
-        battle_counter = 1
-        
-        self.controller.confirm_location('ranhorn', 
-                                        region=self.controller.BOUNDARIES['ranhornSelect'])
+        # A spot that is harmless on every Circus Tour screen (the title / "VS" area) -
+        # tapping it clears dialogue, the Victory screen and reward pop-ups
+        clear_spot = (540, 100)
+
+        # The Events button is on the Campaign screen's side menu, not in Ranhorn
+        self.controller.confirm_location('campaign',
+                                        region=self.controller.BOUNDARIES['campaignSelect'])
         self.image.click_image('buttons/events', confidence=0.8, retry=3, seconds=3)
-        
-        if self.image.is_visible('labels/circustour', retry=3, click=True):
-            while battle_counter < battles:
-                logger.info(f"Circus Tour battle #{battle_counter}")
-                self.image.click_image('buttons/challenge_tr', confidence=0.8, retry=3, 
+
+        if self.image.is_visible('labels/circustour', retry=3, click=True, seconds=3):
+            for battle in range(1, battles + 1):
+                if not self.image.click_image('buttons/challenge_tr', confidence=0.8, retry=3,
+                                              suppress=True, seconds=2):
+                    logger.warning("Challenge button not found, stopping Circus Tour battles")
+                    break
+
+                # Dialogue can appear before the formation screen - tap it away
+                for _ in range(15):
+                    if self.image.is_visible('buttons/battle_large', confidence=0.8, suppress=True,
+                                             seconds=0):
+                        break
+                    self.controller.tap(*clear_spot, seconds=1)
+                else:
+                    logger.warning("Formation screen not reached (no challenges left?)")
+                    break
+
+                logger.info(f"Circus Tour battle #{battle}")
+                self.image.click_image('buttons/battle_large', confidence=0.8, retry=3,
                                       suppress=True, seconds=3)
-                
-                # Clear dialogue on first battle
-                if battle_counter == 1:
-                    while self.image.is_visible('labels/dialogue_left', retry=2, 
-                                               region=self.controller.BOUNDARIES['dialogue_left']):
-                        logger.warning("Clearing dialogue...")
-                        for _ in range(6):
-                            self.controller.tap(550, 900)
-                        self.wait(2)
-                        self.image.click_image('buttons/challenge_tr', confidence=0.8, 
-                                              retry=3, suppress=True, seconds=3)
-                        
-                self.image.click_image('buttons/battle_large', confidence=0.8, retry=3, 
-                                      suppress=True, seconds=5)
-                # Wait for skip button to appear
-                if self.image.wait_for_image('buttons/skip', timeout=5, check_interval=0.2, confidence=0.8):
-                    self.image.click_image('buttons/skip', confidence=0.8)
-                self.controller.tap(550, 1800)  # Clear loot
-                battle_counter += 1
-                
-            # Collect chests
-            self.wait(3)
-            self.controller.tap(500, 1600)  # First chest
-            self.controller.tap(500, 1600)  # Clear loot
-            self.controller.tap(900, 1600)  # Second chest
-            self.controller.tap(900, 1600)  # Clear loot
-            
-            # Exit
-            self.controller.tap(70, 1810, seconds=1)
-            self.controller.tap(70, 1810, seconds=1)
-            
-            if self.controller.confirm_location('ranhorn', change=False, 
-                                               region=self.controller.BOUNDARIES['ranhornSelect']):
+                if self.image.wait_for_image('buttons/skip', timeout=10, check_interval=0.3,
+                                             confidence=0.8):
+                    self.image.click_image('buttons/skip', confidence=0.8, seconds=3)
+
+                # Clear the Victory screen and the Rewards pop-up until Challenge is back
+                for _ in range(10):
+                    if self.image.is_visible('buttons/challenge_tr', confidence=0.8, suppress=True,
+                                             seconds=0):
+                        break
+                    self.controller.tap(*clear_spot, seconds=1.5)
+
+            # Open the damage chests (a ready chest glows; a locked or opened one only shows a
+            # preview), then clear the pop-up until the Challenge button is back
+            self.wait(2)
+            for chest in ((518, 1590), (915, 1590)):
+                self.controller.tap(*chest, seconds=2)
+                for _ in range(5):
+                    if self.image.is_visible('buttons/challenge_tr', confidence=0.8, suppress=True,
+                                             seconds=0):
+                        break
+                    self.controller.tap(*clear_spot, seconds=1.5)
+            logger.info("Circus Tour chests checked")
+
+            # Exit: Circus Mira -> Events -> Campaign
+            self.controller.tap(70, 1810, seconds=2)
+            self.controller.tap(70, 1810, seconds=2)
+
+            if self.controller.confirm_location('campaign', change=False,
+                                               region=self.controller.BOUNDARIES['campaignSelect']):
                 logger.info("Circus Tour attempted successfully")
                 return True
             else:
