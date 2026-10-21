@@ -365,9 +365,11 @@ class ShadowRealmActivities(BaseActivity):
         return None
 
     def _collect_chest(self) -> bool:
-        """Open the treasure chest next to a defeated boss (every 20 floors), if it's still closed"""
-        if not self.image.click_image('labels/shadow/chest_closed', confidence=0.8, seconds=2,
-                                      suppress=True, region=(0, 200, 1080, 1500)):
+        """Open the treasure chest of a defeated boss (every 20 floors), if it's still closed.
+        Boss floors use different chests (gold next to the boss, wooden on floor 60)."""
+        if not any(self.image.click_image(f'labels/shadow/{name}', confidence=0.8, seconds=2,
+                                          suppress=True, region=(0, 200, 1080, 1500))
+                   for name in ('chest_closed', 'chest_closed_2')):
             return False
         self._settle()
         self.controller.tap(*CLOSE_POPUP, seconds=1.5)   # close the rewards popup
