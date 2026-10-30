@@ -608,7 +608,7 @@ class App(ctk.CTk):
             self.activity_thread_running = True
             self.activity_stop_event.clear()
             self.activity_pause_event.clear()
-            self.activity_thread = threading.Thread(target=self.activity_manager, daemon=True)
+            self.activity_thread = threading.Thread(target=self.run_activity, daemon=True)
             self.activity_thread.start()
             self.button_state('disabled')
             self.stop_button_state('normal')
@@ -722,7 +722,7 @@ class App(ctk.CTk):
             self.pvpLabel.configure(text='How many battles?')
             self.pvpEntry.place(x=130, y=92)
 
-    def activity_manager(self) -> None:
+    def run_activity(self) -> None:
         """Run selected activity"""
         try:
             activity = self.activityFormationDropdown.get()
